@@ -120,6 +120,7 @@ internal open class KotlinTasksProvider(val targetName: String) {
         val properties = PropertiesProvider(project)
         val taskClass = taskOrWorkersTask<KotlinJsIrLink, KotlinJsIrLinkWithWorkers>(properties)
         val result = project.registerTask(name, taskClass) {
+            it.compilation = compilation
             configureAction(it)
         }
         configure(result, project, properties, compilation)
