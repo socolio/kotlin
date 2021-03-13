@@ -144,7 +144,8 @@ object Main {
                 break
             }
             else {
-                setRunner(MainClassRunner(arg))
+                // allow running class files with '.class' extension
+                setRunner(MainClassRunner(arg.removeSuffix(".class")))
                 restAsArguments()
                 break
             }

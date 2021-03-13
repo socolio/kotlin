@@ -354,4 +354,14 @@ compiler/testData/launcher/noInline.myscript:1:7: error: unresolved reference: C
             expectedExitCode = 1
         )
     }
+
+    fun testRunClassFileWithExtension() {
+        runProcess("kotlinc", "$testDataDirectory/helloWorld.kt", "-d", tmpdir.path)
+        runProcess(
+            "kotlin",
+            "test.HelloWorldKt.class",
+            expectedStdout = "Hello!\n",
+            workDirectory = tmpdir
+        )
+    }
 }
