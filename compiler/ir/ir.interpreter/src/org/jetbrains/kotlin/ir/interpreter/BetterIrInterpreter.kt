@@ -28,8 +28,9 @@ import org.jetbrains.kotlin.ir.types.impl.originalKotlinType
 import org.jetbrains.kotlin.ir.util.IdSignature
 import org.jetbrains.kotlin.ir.util.render
 import org.jetbrains.kotlin.ir.util.statements
+import org.jetbrains.kotlin.utils.addToStdlib.firstNotNullResult
 
-internal class ArgumentStack {
+internal class DataStack {
     private val stack = mutableListOf<State>()
 
     fun push(state: State) {
@@ -37,45 +38,95 @@ internal class ArgumentStack {
     }
 
     fun pop(): State = stack.removeLast()
+    fun popFirst(): State = stack.removeFirst()
+    fun popLast(): State = stack.removeLast()
 }
 
 internal class CallStack {
-    private val frames = mutableListOf<Frame>()
+    private val frames = mutableListOf<FrameContainer>()
+    private fun getCurrentFrame() = frames.last()
 
-    fun isEmpty() = frames.isEmpty() || (frames.size == 1 && frames.first().isEmpty())
-    fun newFrame(instructions: List<Instruction>) {
-        frames.add(0, Frame(instructions.toMutableList()))
+    fun newFrame(instructions: List<Instruction>, asSubFrame: Boolean = false) {
+        val newFrame = Frame(instructions.toMutableList())
+        when {
+            asSubFrame -> getCurrentFrame().addSubFrame(newFrame)
+            else -> frames.add(FrameContainer(newFrame))
+        }
     }
 
+    fun dropFrame() {
+        frames.removeLast()
+    }
+
+    fun isEmpty() = frames.isEmpty() || (frames.size == 1 && frames.first().isEmpty())
+
     fun addInstruction(instruction: Instruction) {
-        frames.first().pushInstruction(instruction)
+        getCurrentFrame().addInstruction(instruction)
     }
 
     fun popInstruction(): Instruction {
-        if (frames.first().isEmpty()) popFrame()
-        return frames.first().popInstruction()
-    }
-
-    fun popFrame(): Frame {
-        return frames.removeFirst()
+        if (getCurrentFrame().isEmpty()) dropFrame()
+        return getCurrentFrame().popInstruction()
     }
 
     fun pushState(state: State) {
-        frames.first().pushState(state)
+        getCurrentFrame().pushState(state)
     }
 
-    fun popState(): State = frames.first().popState()
+    fun popFirstState(): State = getCurrentFrame().popFirstState()
+    fun popLastState(): State = getCurrentFrame().popLastState()
 
     fun addVariable(variable: Variable) {
-        frames.first().addVariable(variable)
+        getCurrentFrame().addVariable(variable)
     }
 
-    fun getVariable(symbol: IrSymbol): Variable = frames.first().getVariable(symbol)
+    fun getVariable(symbol: IrSymbol): Variable = getCurrentFrame().getVariable(symbol)
+}
+
+private class FrameContainer(frame: Frame) {
+    private val innerStack = mutableListOf(frame)
+    private fun getCurrentFrame() = innerStack.last()
+
+    fun addSubFrame(frame: Frame) {
+        innerStack.add(frame)
+    }
+
+    fun removeSubFrame() {
+        innerStack.removeLast()
+    }
+
+    fun isEmpty() = innerStack.isEmpty() || (innerStack.size == 1 && innerStack.first().isEmpty())
+
+    fun addInstruction(instruction: Instruction) {
+        getCurrentFrame().pushInstruction(instruction)
+    }
+
+    fun popInstruction(): Instruction {
+        return getCurrentFrame().popInstruction()
+    }
+
+    fun pushState(state: State) {
+        getCurrentFrame().pushState(state)
+    }
+
+    fun popFirstState(): State = getCurrentFrame().popFirstState()
+    fun popLastState(): State = getCurrentFrame().popLastState()
+
+    fun addVariable(variable: Variable) {
+        getCurrentFrame().addVariable(variable)
+    }
+
+    fun getVariable(symbol: IrSymbol): Variable {
+        return innerStack.firstNotNullResult { it.getVariable(symbol) }
+            ?: throw InterpreterError("$symbol not found") // TODO better message
+    }
+
+   // fun getAll() = innerStack.flatMap { it.getAll() }
 }
 
 internal class Frame(private val instructions: MutableList<Instruction>) {
     private val memory = mutableListOf<Variable>()
-    private val stack = ArgumentStack()
+    private val dataStack = DataStack()
 
     fun isEmpty() = instructions.isEmpty()
 
@@ -88,10 +139,11 @@ internal class Frame(private val instructions: MutableList<Instruction>) {
     }
 
     fun pushState(state: State) {
-        stack.push(state)
+        dataStack.push(state)
     }
 
-    fun popState(): State = stack.pop()
+    fun popFirstState(): State = dataStack.popFirst()
+    fun popLastState(): State = dataStack.popLast()
 
     fun addVariable(variable: Variable) {
         memory += variable
@@ -108,6 +160,7 @@ internal inline class SimpleInstruction(override val element: IrElement) : Instr
 
 class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<IdSignature, IrBody> = emptyMap()) {
     private val callStack = CallStack()
+    //private val dataStack = DataStack()
 
     fun interpret(expression: IrExpression, file: IrFile? = null): IrExpression {
         callStack.newFrame(listOf(CompoundInstruction(expression)))
@@ -119,7 +172,7 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
             }
         }
 
-        return callStack.popFrame().popState().toIrExpression(expression)
+        return callStack.popFirstState().toIrExpression(expression).apply { callStack.dropFrame() }
     }
 
     private fun unwindInstruction(instruction: CompoundInstruction) {
@@ -142,6 +195,7 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
             is IrConst<*> -> callStack.addInstruction(SimpleInstruction(element))
             is IrWhen -> {
                 // new sub frame to drop it after
+
                 element.branches
             }
             is IrBranch -> {
@@ -153,6 +207,7 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
             }
             is IrBlock -> {
                 // new sub frame
+                element.statements.reversed().forEach { callStack.addInstruction(CompoundInstruction(it)) }
             }
             is IrBody -> {
                 // new sub frame
@@ -176,16 +231,21 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
     private fun interpret(element: IrElement) {
         when (element) {
             is IrCall -> interpretCall(element)
-            is IrConst<*> -> callStack.pushState(element.toPrimitive())
+            is IrConst<*> -> {
+//                dataStack.push(element.toPrimitive())
+                callStack.pushState(element.toPrimitive())
+            }
             is IrReturn -> {
-                callStack.popFrame()
+                val result = callStack.popLastState()
+                callStack.dropFrame()
+                callStack.pushState(result)
             }
         }
     }
 
     private fun interpretCall(call: IrCall) {
-        var dispatchReceiver = call.dispatchReceiver?.let { callStack.popState() }//?.checkNullability(call.dispatchReceiver?.type)
-        val extensionReceiver = call.extensionReceiver?.let { callStack.popState() }//?.checkNullability(call.extensionReceiver?.type)
+        var dispatchReceiver = call.dispatchReceiver?.let { callStack.popFirstState() }//?.checkNullability(call.dispatchReceiver?.type)
+        val extensionReceiver = call.extensionReceiver?.let { callStack.popFirstState() }//?.checkNullability(call.extensionReceiver?.type)
 
         val irFunction = dispatchReceiver?.getIrFunctionByIrCall(call) ?: call.symbol.owner
         dispatchReceiver = when (irFunction.parent) {
@@ -195,7 +255,7 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
 
         irFunction.getDispatchReceiver()?.let { dispatchReceiver?.let { receiver -> callStack.addVariable(Variable(it, receiver)) } }
         irFunction.getExtensionReceiver()?.let { extensionReceiver?.let { receiver -> callStack.addVariable(Variable(it, receiver)) } }
-        irFunction.valueParameters.forEach { callStack.addVariable(Variable(it.symbol, callStack.popState())) }
+        irFunction.valueParameters.forEach { callStack.addVariable(Variable(it.symbol, callStack.popFirstState())) }
 
         when {
             irFunction.body == null -> calculateBuiltIns(irFunction)
@@ -240,6 +300,7 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
             }
         }
         // TODO check "result is Unit"
+        callStack.dropFrame()
         callStack.pushState(result.toState(irFunction.returnType))
     }
 }
