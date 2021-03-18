@@ -20,6 +20,7 @@ import org.jetbrains.kotlin.ir.interpreter.stack.Variable
 import org.jetbrains.kotlin.ir.interpreter.state.Complex
 import org.jetbrains.kotlin.ir.interpreter.state.Primitive
 import org.jetbrains.kotlin.ir.interpreter.state.State
+import org.jetbrains.kotlin.ir.interpreter.state.asBoolean
 import org.jetbrains.kotlin.ir.symbols.IrSymbol
 import org.jetbrains.kotlin.ir.types.IrSimpleType
 import org.jetbrains.kotlin.ir.types.IrType
@@ -56,6 +57,10 @@ internal class CallStack {
 
     fun dropFrame() {
         frames.removeLast()
+    }
+
+    fun dropSubFrame() {
+        getCurrentFrame().removeSubFrame()
     }
 
     fun isEmpty() = frames.isEmpty() || (frames.size == 1 && frames.first().isEmpty())
@@ -179,31 +184,25 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
         when (val element = instruction.element) {
             null -> return
             is IrCall -> {
-                val instructions = mutableListOf<Instruction>()
-                instructions += CompoundInstruction(element.dispatchReceiver)
-                instructions += CompoundInstruction(element.extensionReceiver)
-                instructions.addAll((0 until element.valueArgumentsCount).map { CompoundInstruction(element.getValueArgument(it)) })
-                instructions += SimpleInstruction(element)
-                callStack.newFrame(instructions)
+                callStack.addInstruction(SimpleInstruction(element))
+                (0 until element.valueArgumentsCount).map { CompoundInstruction(element.getValueArgument(it)) }.reversed().forEach { callStack.addInstruction(it) }
+                callStack.addInstruction(CompoundInstruction(element.extensionReceiver))
+                callStack.addInstruction(CompoundInstruction(element.dispatchReceiver))
+                //callStack.newFrame(instructions)
             }
             is IrReturn -> {
-                callStack.addInstruction(SimpleInstruction(element))
-                callStack.addInstruction(CompoundInstruction(element.value))
-                //element.value
-                //element // return + drop frame
+                callStack.addInstruction(SimpleInstruction(element)) //2
+                callStack.addInstruction(CompoundInstruction(element.value)) //1
             }
             is IrConst<*> -> callStack.addInstruction(SimpleInstruction(element))
             is IrWhen -> {
                 // new sub frame to drop it after
 
-                element.branches
+                callStack.newFrame(element.branches.map { CompoundInstruction(it) } + listOf(SimpleInstruction(element)), asSubFrame = true)
             }
             is IrBranch -> {
-                element.condition
-                element // check if true
-                // if true -> drop everything else and add result to stack
-                element.result
-                // else go next
+                callStack.addInstruction(SimpleInstruction(element)) //2
+                callStack.addInstruction(CompoundInstruction(element.condition)) //1
             }
             is IrBlock -> {
                 // new sub frame
@@ -224,6 +223,9 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
                 // if true -> pop and
                 element.result
             }
+            is IrGetValue -> {
+                callStack.pushState(callStack.getVariable(element.symbol).state)
+            }
             else -> TODO("${element.javaClass} not supported")
         }
     }
@@ -240,12 +242,23 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
                 callStack.dropFrame()
                 callStack.pushState(result)
             }
+            is IrBranch -> {
+                val result = callStack.popLastState().asBoolean()
+                if (result) {
+                    callStack.dropSubFrame()
+                    callStack.newFrame(listOf(CompoundInstruction(element.result)), asSubFrame = true)
+                }
+            }
+            is IrWhen -> {
+                callStack.dropSubFrame()
+            }
         }
     }
 
     private fun interpretCall(call: IrCall) {
-        var dispatchReceiver = call.dispatchReceiver?.let { callStack.popFirstState() }//?.checkNullability(call.dispatchReceiver?.type)
-        val extensionReceiver = call.extensionReceiver?.let { callStack.popFirstState() }//?.checkNullability(call.extensionReceiver?.type)
+        val valueArguments = call.symbol.owner.valueParameters.map { callStack.popLastState() }.reversed()
+        val extensionReceiver = call.extensionReceiver?.let { callStack.popLastState() }//?.checkNullability(call.extensionReceiver?.type)
+        var dispatchReceiver = call.dispatchReceiver?.let { callStack.popLastState() }//?.checkNullability(call.dispatchReceiver?.type)
 
         val irFunction = dispatchReceiver?.getIrFunctionByIrCall(call) ?: call.symbol.owner
         dispatchReceiver = when (irFunction.parent) {
@@ -253,9 +266,10 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
             else -> dispatchReceiver
         }
 
+        callStack.newFrame(listOf())
         irFunction.getDispatchReceiver()?.let { dispatchReceiver?.let { receiver -> callStack.addVariable(Variable(it, receiver)) } }
         irFunction.getExtensionReceiver()?.let { extensionReceiver?.let { receiver -> callStack.addVariable(Variable(it, receiver)) } }
-        irFunction.valueParameters.forEach { callStack.addVariable(Variable(it.symbol, callStack.popFirstState())) }
+        irFunction.valueParameters.forEachIndexed { i, param -> callStack.addVariable(Variable(param.symbol, valueArguments[i])) }
 
         when {
             irFunction.body == null -> calculateBuiltIns(irFunction)
@@ -263,12 +277,22 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
         }
     }
 
+    private fun getArgs(irFunction: IrFunction): List<State> {
+        val args = mutableListOf<State>()
+
+        irFunction.getDispatchReceiver()?.let { args += callStack.getVariable(it).state }
+        irFunction.getExtensionReceiver()?.let { args += callStack.getVariable(it).state }
+        irFunction.valueParameters.forEach { args += callStack.getVariable(it.symbol).state }
+
+        return args
+    }
+
     private fun calculateBuiltIns(irFunction: IrFunction) {
         val methodName = when (val property = (irFunction as? IrSimpleFunction)?.correspondingPropertySymbol) {
             null -> irFunction.name.asString()
             else -> property.owner.name.asString()
         }
-        val args = listOf(callStack.getVariable(irFunction.dispatchReceiverParameter!!.symbol).state, callStack.getVariable(irFunction.valueParameters.single().symbol).state)
+        val args = getArgs(irFunction)
 
         val receiverType = irFunction.dispatchReceiverParameter?.type
         val argsType = listOfNotNull(receiverType) + irFunction.valueParameters.map { it.type }
