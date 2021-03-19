@@ -252,9 +252,8 @@ internal inline fun withExceptionHandler(environment: IrInterpreterEnvironment, 
         val exceptionName = e::class.java.simpleName
         val irExceptionClass = environment.irExceptions.firstOrNull { it.name.asString() == exceptionName }
             ?: environment.irBuiltIns.throwableClass.owner
-        val stackTrace = environment.callStack.getStackTrace()
+        environment.callStack.pushState(ExceptionState(e, irExceptionClass, environment.callStack.getStackTrace()))
         environment.callStack.dropFrameUntilTryCatch()
-        environment.callStack.pushState(ExceptionState(e, irExceptionClass, stackTrace))
     }
 }
 

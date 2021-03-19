@@ -14,7 +14,9 @@ import org.jetbrains.kotlin.ir.interpreter.builtins.interpretTernaryFunction
 import org.jetbrains.kotlin.ir.interpreter.builtins.interpretUnaryFunction
 import org.jetbrains.kotlin.ir.interpreter.exceptions.InterpreterError
 import org.jetbrains.kotlin.ir.interpreter.stack.Variable
+import org.jetbrains.kotlin.ir.interpreter.state.*
 import org.jetbrains.kotlin.ir.interpreter.state.Complex
+import org.jetbrains.kotlin.ir.interpreter.state.ExceptionState
 import org.jetbrains.kotlin.ir.interpreter.state.Primitive
 import org.jetbrains.kotlin.ir.interpreter.state.State
 import org.jetbrains.kotlin.ir.interpreter.state.asBoolean
@@ -41,7 +43,7 @@ internal class DataStack {
 
 internal class CallStack {
     private val frames = mutableListOf<FrameContainer>()
-    private fun getCurrentFrame() = frames.last()
+    internal fun getCurrentFrame() = frames.last()
 
     fun newFrame(frameOwner: IrElement, instructions: List<Instruction>, irFile: IrFile? = null) {
         val newFrame = Frame(instructions.toMutableList(), frameOwner)
@@ -62,6 +64,22 @@ internal class CallStack {
         frames.removeLast()
     }
 
+    fun dropFrameGracefully(irReturn: IrReturn, result: State) {
+        val frame = getCurrentFrame()
+        while (!frame.hasNoFrames()) {
+            val frameOwner = frame.currentSubFrameOwner
+            dropSubFrame()
+            if (frameOwner is IrTry) {
+                pushState(result)
+                addInstruction(SimpleInstruction(irReturn))
+                addInstruction(CompoundInstruction(frameOwner.finallyExpression))
+                return
+            }
+        }
+        dropFrame()
+        pushState(result)
+    }
+
     fun dropSubFrame() {
         getCurrentFrame().removeSubFrame()
     }
@@ -74,11 +92,23 @@ internal class CallStack {
     }
 
     fun dropFrameUntilTryCatch() {
+        val exception = popState()
         while (frames.isNotEmpty()) {
             val frame = getCurrentFrame()
             while (!frame.hasNoFrames()) {
-                if (frame.currentSubFrameOwner is IrTry || (frames.size == 1 && frame.hasOneFrameLeft())) {
+                if (frames.size == 1 && frame.hasOneFrameLeft()) {
+                    pushState(exception)
                     return frame.dropInstructions()
+                }
+                val frameOwner = frame.currentSubFrameOwner
+                if (frameOwner is IrTry) {
+                    dropSubFrame()
+                    newSubFrame(frameOwner, listOf())
+                    pushState(exception)
+                    addInstruction(SimpleInstruction(frameOwner))
+                    frameOwner.finallyExpression?.let { addInstruction(CompoundInstruction(it)) }
+                    frameOwner.catches.reversed().forEach { addInstruction(CompoundInstruction(it)) }
+                    return
                 }
                 dropSubFrame()
             }
@@ -102,6 +132,7 @@ internal class CallStack {
     }
 
     fun popState(): State = getCurrentFrame().popState()
+    fun peekState(): State? = getCurrentFrame().peekState()
 
     fun addVariable(variable: Variable) {
         getCurrentFrame().addVariable(variable)
@@ -114,7 +145,7 @@ internal class CallStack {
     }
 }
 
-private class FrameContainer(frame: Frame, val irFile: IrFile? = null) {
+internal class FrameContainer(frame: Frame, val irFile: IrFile? = null) {
     var lineNumber: Int = -1
     private val innerStack = mutableListOf(frame)
     val currentSubFrameOwner: IrElement
@@ -150,6 +181,7 @@ private class FrameContainer(frame: Frame, val irFile: IrFile? = null) {
     }
 
     fun popState(): State = getCurrentFrame().popState()
+    fun peekState(): State? = getCurrentFrame().peekState()
 
     fun addVariable(variable: Variable) {
         getCurrentFrame().addVariable(variable)
@@ -197,7 +229,7 @@ internal class Frame(private val instructions: MutableList<Instruction>, val own
     }
 
     fun popState(): State = dataStack.pop()
-    fun peekState(): State? = if (dataStack.isEmpty()) null else dataStack.peek()
+    fun peekState(): State? = if (!dataStack.isEmpty()) dataStack.peek() else null
 
     fun addVariable(variable: Variable) {
         memory += variable
@@ -313,15 +345,29 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
                 callStack.addInstruction(CompoundInstruction(element.argument))
             }
             is IrTry -> {
-                element.tryResult
-                element.catches.forEach { }
-                element.finallyExpression
+                callStack.newSubFrame(element, listOf())
+                callStack.addInstruction(SimpleInstruction(element))
+                callStack.addInstruction(CompoundInstruction(element.tryResult))
+//                element.catches.reversed().forEach { callStack.addInstruction(CompoundInstruction(it)) }
+
+                element.finallyExpression?.let { callStack.addInstruction(CompoundInstruction(it)) }
             }
             is IrCatch -> {
                 // if exception
-                element.catchParameter // check here
-                // if true -> pop and
-                element.result
+                val exceptionState = callStack.peekState() as? ExceptionState ?: return
+                if (exceptionState.isSubtypeOf(element.catchParameter.type)) {
+                    callStack.popState()
+                    val frameOwner = callStack.getCurrentFrame().currentSubFrameOwner as IrTry
+                    callStack.dropSubFrame()
+                    callStack.newSubFrame(frameOwner, listOf())
+                    callStack.addInstruction(SimpleInstruction(frameOwner))
+                    frameOwner.finallyExpression?.let { callStack.addInstruction(CompoundInstruction(it)) }
+                    callStack.addInstruction(CompoundInstruction(element.result))
+                }
+
+//                element.catchParameter // check here
+//                // if true -> pop and
+//                element.result
             }
 
             else -> TODO("${element.javaClass} not supported")
@@ -338,8 +384,8 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
             }
             is IrReturn -> {
                 val result = callStack.popState()
-                callStack.dropFrame()
-                callStack.pushState(result)
+                callStack.dropFrameGracefully(element, result)
+//                callStack.pushState(result)
             }
             is IrBranch -> {
                 val result = callStack.popState().asBoolean()
@@ -381,6 +427,13 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
             is IrBlock -> {
                 callStack.dropSubFrame()
             }
+            is IrTry -> {
+                callStack.dropSubFrame()
+                if (callStack.peekState() is ExceptionState) {
+                    environment.callStack.dropFrameUntilTryCatch()
+                }
+//                element.finallyExpression?.let { callStack.addInstruction(CompoundInstruction(it)) }
+            }
             else -> TODO("${element.javaClass} not supported for interpretation")
         }
     }
@@ -396,7 +449,7 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
             else -> dispatchReceiver
         }
 
-       // callStack.fixCallEntryPoint(call)
+        // callStack.fixCallEntryPoint(call)
         callStack.newFrame(irFunction, listOf())
         irFunction.getDispatchReceiver()?.let { dispatchReceiver?.let { receiver -> callStack.addVariable(Variable(it, receiver)) } }
         irFunction.getExtensionReceiver()?.let { extensionReceiver?.let { receiver -> callStack.addVariable(Variable(it, receiver)) } }
@@ -454,6 +507,7 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
                 else -> throw InterpreterError("Unsupported number of arguments for invocation as builtin functions")
             }
             // TODO check "result is Unit"
+            callStack.dropFrame()
             callStack.pushState(result.toState(irFunction.returnType))
         }
     }
