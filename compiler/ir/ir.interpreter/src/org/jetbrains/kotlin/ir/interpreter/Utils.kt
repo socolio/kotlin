@@ -13,6 +13,7 @@ import org.jetbrains.kotlin.ir.UNDEFINED_OFFSET
 import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.expressions.*
 import org.jetbrains.kotlin.ir.expressions.impl.IrConstImpl
+import org.jetbrains.kotlin.ir.expressions.impl.IrErrorExpressionImpl
 import org.jetbrains.kotlin.ir.interpreter.builtins.evaluateIntrinsicAnnotation
 import org.jetbrains.kotlin.ir.interpreter.exceptions.throwAsUserException
 import org.jetbrains.kotlin.ir.interpreter.stack.Variable
@@ -28,7 +29,6 @@ import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.types.Variance
 import org.jetbrains.kotlin.util.capitalizeDecapitalize.capitalizeAsciiOnly
-import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 import java.lang.invoke.MethodType
 import kotlin.math.min
 
@@ -53,6 +53,9 @@ internal fun State.toIrExpression(expression: IrExpression): IrExpression {
                 type.isPrimitiveType() || type.isString() -> this.value.toIrConst(type, start, end)
                 else -> expression // TODO support for arrays
             }
+        is ExceptionState -> {
+            IrErrorExpressionImpl(expression.startOffset, expression.endOffset, expression.type, "\n" + this.getFullDescription())
+        }
         is Complex -> {
             val stateType = this.irClass.defaultType
             when {
@@ -239,6 +242,19 @@ inline fun withExceptionHandler(block: () -> Any?): Any? {
         return block()
     } catch (e: Throwable) {
         e.throwAsUserException()
+    }
+}
+
+internal inline fun withExceptionHandler(environment: IrInterpreterEnvironment, block: () -> Unit) {
+    try {
+        block()
+    } catch (e: Throwable) {
+        val exceptionName = e::class.java.simpleName
+        val irExceptionClass = environment.irExceptions.firstOrNull { it.name.asString() == exceptionName }
+            ?: environment.irBuiltIns.throwableClass.owner
+        val stackTrace = environment.callStack.getStackTrace()
+        environment.callStack.dropFrameUntilTryCatch()
+        environment.callStack.pushState(ExceptionState(e, irExceptionClass, stackTrace))
     }
 }
 
