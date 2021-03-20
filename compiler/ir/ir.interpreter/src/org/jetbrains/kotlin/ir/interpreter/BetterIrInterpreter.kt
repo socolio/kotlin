@@ -106,11 +106,11 @@ internal class CallStack {
                     newSubFrame(frameOwner, listOf())
                     pushState(exception)
                     addInstruction(SimpleInstruction(frameOwner))
-                    frameOwner.finallyExpression?.let { addInstruction(CompoundInstruction(it)) }
+//                    frameOwner.finallyExpression?.let { addInstruction(CompoundInstruction(it)) }
                     frameOwner.catches.reversed().forEach { addInstruction(CompoundInstruction(it)) }
                     return
                 }
-                dropSubFrame()
+                dropSubFrame() // TODO drop with info loosing
             }
             dropFrame()
         }
@@ -283,7 +283,6 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
                 (0 until element.valueArgumentsCount).map { CompoundInstruction(element.getValueArgument(it)) }.reversed().forEach { callStack.addInstruction(it) }
                 callStack.addInstruction(CompoundInstruction(element.extensionReceiver))
                 callStack.addInstruction(CompoundInstruction(element.dispatchReceiver))
-                //callStack.newFrame(instructions)
             }
             is IrReturn -> {
                 callStack.addInstruction(SimpleInstruction(element)) //2
@@ -292,7 +291,6 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
             is IrConst<*> -> callStack.addInstruction(SimpleInstruction(element))
             is IrWhen -> {
                 // new sub frame to drop it after
-
                 callStack.newSubFrame(element, element.branches.map { CompoundInstruction(it) } + listOf(SimpleInstruction(element)))
             }
             is IrBranch -> {
@@ -306,7 +304,7 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
                 element.statements.reversed().forEach { callStack.addInstruction(CompoundInstruction(it)) }
             }
             is IrBody -> {
-                // new sub frame
+                // TODO new sub frame???
                 element.statements.reversed().forEach { callStack.addInstruction(CompoundInstruction(it)) }
             }
             is IrVariable -> {
@@ -348,9 +346,6 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
                 callStack.newSubFrame(element, listOf())
                 callStack.addInstruction(SimpleInstruction(element))
                 callStack.addInstruction(CompoundInstruction(element.tryResult))
-//                element.catches.reversed().forEach { callStack.addInstruction(CompoundInstruction(it)) }
-
-                element.finallyExpression?.let { callStack.addInstruction(CompoundInstruction(it)) }
             }
             is IrCatch -> {
                 // if exception
@@ -358,10 +353,11 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
                 if (exceptionState.isSubtypeOf(element.catchParameter.type)) {
                     callStack.popState()
                     val frameOwner = callStack.getCurrentFrame().currentSubFrameOwner as IrTry
-                    callStack.dropSubFrame()
-                    callStack.newSubFrame(frameOwner, listOf())
+                    callStack.dropSubFrame() // drop other catch blocks
+                    callStack.newSubFrame(frameOwner, listOf()) // new frame with IrTry as owner to interpret finally block at the end
+                    callStack.addVariable(Variable(element.catchParameter.symbol, exceptionState))
                     callStack.addInstruction(SimpleInstruction(frameOwner))
-                    frameOwner.finallyExpression?.let { callStack.addInstruction(CompoundInstruction(it)) }
+//                    frameOwner.finallyExpression?.let { callStack.addInstruction(CompoundInstruction(it)) }
                     callStack.addInstruction(CompoundInstruction(element.result))
                 }
 
@@ -428,11 +424,21 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
                 callStack.dropSubFrame()
             }
             is IrTry -> {
-                callStack.dropSubFrame()
+                val frameOwner = callStack.getCurrentFrame().currentSubFrameOwner
+                // 1. after first evaluation of try, must process finally expression
+                if (frameOwner is IrTry) {
+                    callStack.dropSubFrame()
+                    if (element.finallyExpression != null) {
+                        callStack.addInstruction(SimpleInstruction(element))
+                        callStack.addInstruction(CompoundInstruction(element.finallyExpression))
+                        return
+                    }
+                }
+
+                // 2. after evaluation of finally, check that there are not unhandled exceptions left
                 if (callStack.peekState() is ExceptionState) {
                     environment.callStack.dropFrameUntilTryCatch()
                 }
-//                element.finallyExpression?.let { callStack.addInstruction(CompoundInstruction(it)) }
             }
             else -> TODO("${element.javaClass} not supported for interpretation")
         }
