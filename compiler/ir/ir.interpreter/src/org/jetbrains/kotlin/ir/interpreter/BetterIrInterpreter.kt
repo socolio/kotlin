@@ -6,9 +6,11 @@
 package org.jetbrains.kotlin.ir.interpreter
 
 import org.jetbrains.kotlin.ir.IrElement
+import org.jetbrains.kotlin.ir.UNDEFINED_OFFSET
 import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.descriptors.IrBuiltIns
 import org.jetbrains.kotlin.ir.expressions.*
+import org.jetbrains.kotlin.ir.expressions.impl.IrConstImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrConstructorCallImpl
 import org.jetbrains.kotlin.ir.interpreter.builtins.evaluateIntrinsicAnnotation
 import org.jetbrains.kotlin.ir.interpreter.builtins.interpretBinaryFunction
@@ -17,6 +19,9 @@ import org.jetbrains.kotlin.ir.interpreter.builtins.interpretUnaryFunction
 import org.jetbrains.kotlin.ir.interpreter.exceptions.InterpreterError
 import org.jetbrains.kotlin.ir.interpreter.exceptions.InterpreterTimeOutError
 import org.jetbrains.kotlin.ir.interpreter.exceptions.throwAsUserException
+import org.jetbrains.kotlin.ir.interpreter.intrinsics.IntrinsicEvaluator
+import org.jetbrains.kotlin.ir.interpreter.proxy.CommonProxy.Companion.asProxy
+import org.jetbrains.kotlin.ir.interpreter.proxy.Proxy
 import org.jetbrains.kotlin.ir.interpreter.stack.Variable
 import org.jetbrains.kotlin.ir.interpreter.state.*
 import org.jetbrains.kotlin.ir.interpreter.state.Complex
@@ -25,11 +30,17 @@ import org.jetbrains.kotlin.ir.interpreter.state.Primitive
 import org.jetbrains.kotlin.ir.interpreter.state.State
 import org.jetbrains.kotlin.ir.interpreter.state.asBoolean
 import org.jetbrains.kotlin.ir.interpreter.state.isSubtypeOf
+import org.jetbrains.kotlin.ir.interpreter.state.reflection.KFunctionState
+import org.jetbrains.kotlin.ir.interpreter.state.reflection.KTypeState
+import org.jetbrains.kotlin.ir.interpreter.state.reflection.ReflectionState
 import org.jetbrains.kotlin.ir.symbols.IrSymbol
 import org.jetbrains.kotlin.ir.types.*
 import org.jetbrains.kotlin.ir.types.impl.originalKotlinType
 import org.jetbrains.kotlin.ir.util.*
+import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.utils.addToStdlib.firstNotNullResult
+import java.lang.invoke.MethodHandle
 
 private const val MAX_COMMANDS = 1_000_000
 
@@ -263,10 +274,11 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
 
     private fun incrementAndCheckCommands() {
         commandCount++
-        if (commandCount >= MAX_COMMANDS) handleUserException(InterpreterTimeOutError(), environment)
+        if (commandCount >= MAX_COMMANDS) InterpreterTimeOutError().handleUserException(environment)
     }
 
     fun interpret(expression: IrExpression, file: IrFile? = null): IrExpression {
+        commandCount = 0
         callStack.newFrame(expression, listOf(CompoundInstruction(expression)), file)
 
         while (!callStack.hasNoInstructions()) {
@@ -286,27 +298,40 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
             is IrSimpleFunction -> {
 //                if (stack.getStackCount() >= MAX_STACK) StackOverflowError().throwAsUserException()
 //                if (irFunction.body is IrSyntheticBody) return handleIntrinsicMethods(irFunction)
-//                return irFunction.body?.interpret() ?: throw InterpreterError("Ir function must be with body")
                 callStack.addInstruction(SimpleInstruction(element))
-                callStack.addInstruction(CompoundInstruction(element.body!!))
+                element.body?.let { callStack.addInstruction(CompoundInstruction(it)) }
+                    ?: throw InterpreterError("Ir function must be with body")
             }
             is IrConstructor -> {
                 callStack.addInstruction(SimpleInstruction(element))
                 callStack.addInstruction(CompoundInstruction(element.body!!))
             }
             is IrCall -> {
+                val function = element.symbol.owner
+                // new sub frame is used to store value arguments, in case then they are used in default args evaluation
+                callStack.newSubFrame(element, listOf())
                 callStack.addInstruction(SimpleInstruction(element))
-                (0 until element.valueArgumentsCount).map { CompoundInstruction(element.getValueArgument(it)) }.reversed().forEach { callStack.addInstruction(it) }
-                callStack.addInstruction(CompoundInstruction(element.extensionReceiver))
-                callStack.addInstruction(CompoundInstruction(element.dispatchReceiver))
+                unwindValueParameters(element)
+
+                // must save receivers in memory in case then they are used in default args evaluation
+                element.extensionReceiver?.let {
+                    callStack.addInstruction(SimpleInstruction(function.extensionReceiverParameter!!))
+                    callStack.addInstruction(CompoundInstruction(it))
+                }
+                element.dispatchReceiver?.let {
+                    callStack.addInstruction(SimpleInstruction(function.dispatchReceiverParameter!!))
+                    callStack.addInstruction(CompoundInstruction(it))
+                }
             }
             is IrConstructorCall -> {
+                callStack.newSubFrame(element, listOf()) // used to store value arguments, in case then they are use as default args
                 callStack.addInstruction(SimpleInstruction(element))
-                (0 until element.valueArgumentsCount).map { CompoundInstruction(element.getValueArgument(it)) }.reversed().forEach { callStack.addInstruction(it) }
+                unwindValueParameters(element)
             }
             is IrDelegatingConstructorCall -> {
+                callStack.newSubFrame(element, listOf()) // used to store value arguments, in case then they are use as default args
                 callStack.addInstruction(SimpleInstruction(element))
-                (0 until element.valueArgumentsCount).map { CompoundInstruction(element.getValueArgument(it)) }.reversed().forEach { callStack.addInstruction(it) }
+                unwindValueParameters(element)
             }
             is IrInstanceInitializerCall -> {
                 //callStack.addInstruction(SimpleInstruction(element))
@@ -437,8 +462,46 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
                     else -> TODO("${element.origin} not implemented")
                 }
             }
+            is IrSpreadElement -> callStack.addInstruction(CompoundInstruction(element.expression))
+            is IrVararg -> {
+                callStack.addInstruction(SimpleInstruction(element))
+                element.elements.reversed().forEach { callStack.addInstruction(CompoundInstruction(it)) }
+            }
 
             else -> TODO("${element.javaClass} not supported")
+        }
+    }
+
+    private fun unwindValueParameters(expression: IrFunctionAccessExpression) {
+        val irFunction = expression.symbol.owner
+        // if irFunction is lambda and it has receiver, then first descriptor must be taken from extension receiver
+        val receiverAsFirstArgument = when (expression.valueArgumentsCount != irFunction.valueParameters.size) {
+            true -> listOfNotNull(irFunction.getExtensionReceiver())
+            else -> listOf()
+        }
+        val valueParametersSymbols = receiverAsFirstArgument + irFunction.valueParameters.map { it.symbol }
+
+        fun IrValueParameter.getDefault(): IrExpressionBody? {
+            return defaultValue
+                ?: (this.parent as? IrSimpleFunction)?.overriddenSymbols
+                    ?.map { it.owner.valueParameters[this.index].getDefault() }
+                    ?.firstNotNullResult { it }
+        }
+
+        val valueArguments = (0 until expression.valueArgumentsCount).map { expression.getValueArgument(it) }
+        val defaultValues = (if (receiverAsFirstArgument.isNotEmpty()) listOf(null) else listOf()) + // TODO fix this
+                irFunction.valueParameters.map { expression.symbol.owner.valueParameters[it.index].getDefault()?.expression }
+
+        for (i in valueArguments.indices.reversed()) {
+            callStack.addInstruction(SimpleInstruction(valueParametersSymbols[i].owner))
+            val arg = valueArguments[i] ?: defaultValues[i]
+            when {
+                arg != null -> callStack.addInstruction(CompoundInstruction(arg))
+                else ->
+                    // case when value parameter is vararg and it is missing
+                    callStack.addInstruction(SimpleInstruction(IrConstImpl.constNull(UNDEFINED_OFFSET, UNDEFINED_OFFSET, expression.getVarargType(i)!!)))
+            }
+
         }
     }
 
@@ -457,6 +520,7 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
             is IrConstructorCall -> interpretConstructor(element)
             is IrDelegatingConstructorCall -> {
                 if (element.symbol.owner.parent == irBuiltIns.anyClass.owner) {
+                    callStack.dropSubFrame()
                     callStack.pushState(Common(irBuiltIns.anyClass.owner))
                     return
                 }
@@ -544,14 +608,27 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
             is IrGetField -> interpretGetField(element)
             is IrSetField -> interpretSetField(element)
             is IrGetObjectValue -> interpretGetObjectValue(element)
+            is IrVararg -> interpretVararg(element)
+            is IrValueParameter -> interpretValueParameter(element)
             else -> TODO("${element.javaClass} not supported for interpretation")
         }
     }
 
+//    private fun MethodHandle?.invokeMethod(irFunction: IrFunction, args: List<State>) {
+//        this ?: return handleIntrinsicMethods(irFunction)
+//        val argsForMethodInvocation = irFunction.getArgsForMethodInvocation(this@IrInterpreter, this.type(), args)
+//        val result = withExceptionHandler { this.invokeWithArguments(argsForMethodInvocation) }
+//        stack.pushReturnValue(result.toState(result.getType(irFunction.returnType)))
+//    }
+//
+//    private fun handleIntrinsicMethods(irFunction: IrFunction) {
+//        IntrinsicEvaluator().evaluate(irFunction, stack) { this.interpret() }
+//    }
+
     private fun interpretCall(call: IrCall) {
         val valueArguments = call.symbol.owner.valueParameters.map { callStack.popState() }.reversed()
-        val extensionReceiver = call.extensionReceiver?.let { callStack.popState() }//?.checkNullability(call.extensionReceiver?.type)
-        var dispatchReceiver = call.dispatchReceiver?.let { callStack.popState() }//?.checkNullability(call.dispatchReceiver?.type)
+        val extensionReceiver = call.extensionReceiver?.let { callStack.popState() }?.checkNullability(call.extensionReceiver?.type)
+        var dispatchReceiver = call.dispatchReceiver?.let { callStack.popState() }?.checkNullability(call.dispatchReceiver?.type)
 
         val irFunction = dispatchReceiver?.getIrFunctionByIrCall(call) ?: call.symbol.owner
         dispatchReceiver = when (irFunction.parent) {
@@ -559,14 +636,40 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
             else -> dispatchReceiver
         }
 
-        // callStack.fixCallEntryPoint(call)
+        // TODO push expression.type and irFunction.returnType to stack to do check cast later
+        callStack.dropSubFrame() // TODO check that data stack is empty
         callStack.newFrame(irFunction, listOf())
         irFunction.getDispatchReceiver()?.let { dispatchReceiver?.let { receiver -> callStack.addVariable(Variable(it, receiver)) } }
         irFunction.getExtensionReceiver()?.let { extensionReceiver?.let { receiver -> callStack.addVariable(Variable(it, receiver)) } }
         irFunction.valueParameters.forEachIndexed { i, param -> callStack.addVariable(Variable(param.symbol, valueArguments[i])) }
 
+        irFunction.typeParameters
+            .filter {
+                it.isReified || irFunction.fqNameWhenAvailable.toString().let { it == "kotlin.emptyArray" || it == "kotlin.ArrayIntrinsicsKt.emptyArray" }
+            }
+            .forEach {
+                // TODO: emptyArray check is a hack for js, because in js-ir its type parameter isn't marked as reified
+                // TODO: if using KTypeState then it's class must be corresponding
+                callStack.addVariable(Variable(it.symbol, KTypeState(call.getTypeArgument(it.index)!!, irBuiltIns.anyClass.owner)))
+            }
+
+//        if (dispatchReceiver?.irClass?.isLocal == true || irFunction.isLocal) {
+//            valueArguments.addAll(dispatchReceiver.extractNonLocalDeclarations())
+//        }
+//
+//        if (dispatchReceiver is Complex && irFunction.parentClassOrNull?.isInner == true) {
+//            generateSequence(dispatchReceiver.outerClass) { (it.state as? Complex)?.outerClass }.forEach { valueArguments.add(it) }
+//        }
+
+        // inline only methods are not presented in lookup table, so must be interpreted instead of execution
+        val isInlineOnly = irFunction.hasAnnotation(FqName("kotlin.internal.InlineOnly"))
         when {
-            irFunction.body == null -> calculateBuiltIns(irFunction)
+//            dispatchReceiver is Wrapper && !isInlineOnly -> dispatchReceiver.getMethod(irFunction).invokeMethod(irFunction)
+//            irFunction.hasAnnotation(evaluateIntrinsicAnnotation) -> Wrapper.getStaticMethod(irFunction).invokeMethod(irFunction)
+//            dispatchReceiver is KFunctionState && expression.symbol.owner.name.asString() == "invoke" -> irFunction.interpret()
+//            dispatchReceiver is ReflectionState -> Wrapper.getReflectionMethod(irFunction).invokeMethod(irFunction)
+            dispatchReceiver is Primitive<*> -> calculateBuiltIns(irFunction) // 'is Primitive' check for js char, js long and get field for primitives
+            irFunction.body == null -> /*irFunction.trySubstituteFunctionBody() ?: irFunction.tryCalculateLazyConst() ?:*/ calculateBuiltIns(irFunction)
             else -> callStack.addInstruction(CompoundInstruction(irFunction))
         }
     }
@@ -656,14 +759,28 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
 
     private fun interpretConstructor(constructorCall: IrFunctionAccessExpression) {
         val valueArguments = constructorCall.symbol.owner.valueParameters.map { callStack.popState() }.reversed()
-
         val constructor = constructorCall.symbol.owner
         val irClass = constructor.parentAsClass
+
+//        if (irClass.hasAnnotation(evaluateIntrinsicAnnotation) || irClass.fqNameWhenAvailable!!.startsWith(Name.identifier("java"))) {
+//            return Wrapper.getConstructorMethod(constructor).invokeMethod(constructor, valueArguments)
+//        }
+
+//        if (irClass.defaultType.isArray() || irClass.defaultType.isPrimitiveArray()) {
+//            // array constructor doesn't have body so must be treated separately
+//            return stack.newFrame(constructor, initPool = valueArguments) { handleIntrinsicMethods(constructor) }
+//                .apply {
+//                    val array = stack.popReturnValue() as Primitive<*>
+//                    stack.pushReturnValue(Primitive(array.value, constructorCall.type))
+//                }
+//        }
+
         val classState = when (constructorCall) {
             is IrConstructorCall -> Variable(constructorCall.getThisReceiver(), Common(irClass))
             else -> callStack.getVariable(constructorCall.getThisReceiver())
         }
 
+        callStack.dropSubFrame() // TODO check that data stack is empty
         callStack.newFrame(constructor, listOf())
         callStack.addVariable(classState)
         constructor.valueParameters.forEachIndexed { i, param -> callStack.addVariable(Variable(param.symbol, valueArguments[i])) }
@@ -676,6 +793,26 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
         callStack.addVariable(Variable(superReceiver, classState.state))
 
         callStack.addInstruction(CompoundInstruction(constructor))
+    }
+
+    private fun interpretValueParameter(valueParameter: IrValueParameter) {
+//        val irFunction = valueParameter.parent as IrFunction
+//
+//        callStack.peekState()?.checkNullability(valueParameter.type, environment) {
+//            val method = irFunction.getCapitalizedFileName() + "." + irFunction.fqNameWhenAvailable
+//            val parameter = valueParameter.name
+//            IllegalArgumentException("Parameter specified as non-null is null: method $method, parameter $parameter").handleUserException(environment)
+//        }
+
+        val result = callStack.peekState() ?: TODO("error: value argument missing")
+        val state = when {
+            // if vararg is empty
+            result.isNull() -> listOf<Any?>().toPrimitiveStateArray((result as Primitive<*>).type)
+            else -> result
+        }
+
+        //must add value argument in current stack because it can be used later as default argument
+        callStack.addVariable(Variable(valueParameter.symbol, state))
     }
 
     private fun interpretSetField(expression: IrSetField) {
@@ -715,5 +852,54 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
     private fun interpretGetObjectValue(expression: IrGetObjectValue) {
         val objectClass = expression.symbol.owner
         environment.mapOfObjects[objectClass.symbol] = callStack.peekState() as Complex
+    }
+
+    private fun interpretVararg(expression: IrVararg) {
+        fun arrayToList(value: Any?): List<Any?> {
+            return when (value) {
+                is ByteArray -> value.toList()
+                is CharArray -> value.toList()
+                is ShortArray -> value.toList()
+                is IntArray -> value.toList()
+                is LongArray -> value.toList()
+                is FloatArray -> value.toList()
+                is DoubleArray -> value.toList()
+                is BooleanArray -> value.toList()
+                is Array<*> -> value.toList()
+                else -> listOf(value)
+            }
+        }
+
+        val args = expression.elements.flatMap {
+            return@flatMap when (val result = callStack.popState()) {
+                is Wrapper -> listOf(result.value)
+                is Primitive<*> -> when {
+                    expression.varargElementType.isArray() || expression.varargElementType.isPrimitiveArray() -> listOf(result)
+                    else -> arrayToList(result.value)
+                }
+                is Common -> when {
+                    result.irClass.defaultType.isUnsignedArray() -> arrayToList((result.fields.single().state as Primitive<*>).value)
+                    else -> TODO("vararg proxy")//listOf(result.asProxy(this))
+                }
+                else -> listOf(result)
+            }
+        }
+
+        val array = when {
+            expression.type.isUnsignedArray() -> {
+                val owner = expression.type.classOrNull!!.owner
+                val storageProperty = owner.declarations.filterIsInstance<IrProperty>().first { it.name.asString() == "storage" }
+                val primitiveArray = args.map {
+                    when (it) {
+                        is Proxy -> (it.state.fields.single().state as Primitive<*>).value  // is unsigned number
+                        else -> it                                                          // is primitive number
+                    }
+                }
+                val unsignedArray = primitiveArray.toPrimitiveStateArray(storageProperty.backingField!!.type)
+                Common(owner).apply { fields.add(Variable(storageProperty.symbol, unsignedArray)) }
+            }
+            else -> args.toPrimitiveStateArray(expression.type)
+        }
+        callStack.pushState(array)
     }
 }

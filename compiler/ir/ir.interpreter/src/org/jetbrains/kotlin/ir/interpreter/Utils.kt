@@ -249,15 +249,15 @@ internal inline fun withExceptionHandler(environment: IrInterpreterEnvironment, 
     try {
         block()
     } catch (e: Throwable) {
-        handleUserException(e, environment)
+        e.handleUserException(environment)
     }
 }
 
-internal fun handleUserException(e: Throwable, environment: IrInterpreterEnvironment) {
-    val exceptionName = e::class.java.simpleName
+internal fun Throwable.handleUserException(environment: IrInterpreterEnvironment) {
+    val exceptionName = this::class.java.simpleName
     val irExceptionClass = environment.irExceptions.firstOrNull { it.name.asString() == exceptionName }
         ?: environment.irBuiltIns.throwableClass.owner
-    environment.callStack.pushState(ExceptionState(e, irExceptionClass, environment.callStack.getStackTrace()))
+    environment.callStack.pushState(ExceptionState(this, irExceptionClass, environment.callStack.getStackTrace()))
     environment.callStack.dropFrameUntilTryCatch()
 }
 
