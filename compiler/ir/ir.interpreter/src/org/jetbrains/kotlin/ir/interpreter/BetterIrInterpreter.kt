@@ -15,6 +15,8 @@ import org.jetbrains.kotlin.ir.interpreter.builtins.interpretBinaryFunction
 import org.jetbrains.kotlin.ir.interpreter.builtins.interpretTernaryFunction
 import org.jetbrains.kotlin.ir.interpreter.builtins.interpretUnaryFunction
 import org.jetbrains.kotlin.ir.interpreter.exceptions.InterpreterError
+import org.jetbrains.kotlin.ir.interpreter.exceptions.InterpreterTimeOutError
+import org.jetbrains.kotlin.ir.interpreter.exceptions.throwAsUserException
 import org.jetbrains.kotlin.ir.interpreter.stack.Variable
 import org.jetbrains.kotlin.ir.interpreter.state.*
 import org.jetbrains.kotlin.ir.interpreter.state.Complex
@@ -28,6 +30,8 @@ import org.jetbrains.kotlin.ir.types.*
 import org.jetbrains.kotlin.ir.types.impl.originalKotlinType
 import org.jetbrains.kotlin.ir.util.*
 import org.jetbrains.kotlin.utils.addToStdlib.firstNotNullResult
+
+private const val MAX_COMMANDS = 1_000_000
 
 internal class DataStack {
     private val stack = mutableListOf<State>()
@@ -255,6 +259,12 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
     private val environment = IrInterpreterEnvironment(irBuiltIns, CallStack())
     private val callStack: CallStack
         get() = environment.callStack
+    private var commandCount = 0
+
+    private fun incrementAndCheckCommands() {
+        commandCount++
+        if (commandCount >= MAX_COMMANDS) handleUserException(InterpreterTimeOutError(), environment)
+    }
 
     fun interpret(expression: IrExpression, file: IrFile? = null): IrExpression {
         callStack.newFrame(expression, listOf(CompoundInstruction(expression)), file)
@@ -264,6 +274,7 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
                 is CompoundInstruction -> unwindInstruction(instruction)
                 is SimpleInstruction -> interpret(instruction.element)
             }
+            incrementAndCheckCommands()
         }
 
         return callStack.popState().toIrExpression(expression).apply { callStack.dropFrame() }
@@ -419,6 +430,13 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
                     }
                 }
             }
+            is IrComposite -> {
+                when (element.origin) {
+                    IrStatementOrigin.DESTRUCTURING_DECLARATION -> element.statements.reversed().forEach { callStack.addInstruction(CompoundInstruction(it)) }
+                    null -> element.statements.reversed().forEach { callStack.addInstruction(CompoundInstruction(it)) } // is null for body of do while loop
+                    else -> TODO("${element.origin} not implemented")
+                }
+            }
 
             else -> TODO("${element.javaClass} not supported")
         }
@@ -481,14 +499,20 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
                 val result = callStack.popState().asBoolean()
                 callStack.dropSubFrame()
                 if (result) {
-                    callStack.newSubFrame(element, listOf(CompoundInstruction(element.body), CompoundInstruction(element)))
+                    callStack.newSubFrame(
+                        element,
+                        listOf(CompoundInstruction(element.body), CompoundInstruction(element.condition), SimpleInstruction(element))
+                    )
                 }
             }
             is IrDoWhileLoop -> {
                 val result = callStack.popState().asBoolean()
                 callStack.dropSubFrame()
                 if (result) {
-                    callStack.newSubFrame(element, listOf(CompoundInstruction(element)))
+                    callStack.newSubFrame(
+                        element,
+                        listOf(CompoundInstruction(element.body), CompoundInstruction(element.condition), SimpleInstruction(element))
+                    )
                 }
             }
             is IrTypeOperatorCall -> {
