@@ -9,6 +9,8 @@ import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.descriptors.IrBuiltIns
 import org.jetbrains.kotlin.ir.expressions.*
+import org.jetbrains.kotlin.ir.expressions.impl.IrConstructorCallImpl
+import org.jetbrains.kotlin.ir.interpreter.builtins.evaluateIntrinsicAnnotation
 import org.jetbrains.kotlin.ir.interpreter.builtins.interpretBinaryFunction
 import org.jetbrains.kotlin.ir.interpreter.builtins.interpretTernaryFunction
 import org.jetbrains.kotlin.ir.interpreter.builtins.interpretUnaryFunction
@@ -20,11 +22,9 @@ import org.jetbrains.kotlin.ir.interpreter.state.ExceptionState
 import org.jetbrains.kotlin.ir.interpreter.state.Primitive
 import org.jetbrains.kotlin.ir.interpreter.state.State
 import org.jetbrains.kotlin.ir.interpreter.state.asBoolean
+import org.jetbrains.kotlin.ir.interpreter.state.isSubtypeOf
 import org.jetbrains.kotlin.ir.symbols.IrSymbol
-import org.jetbrains.kotlin.ir.types.IrSimpleType
-import org.jetbrains.kotlin.ir.types.IrType
-import org.jetbrains.kotlin.ir.types.classifierOrFail
-import org.jetbrains.kotlin.ir.types.classifierOrNull
+import org.jetbrains.kotlin.ir.types.*
 import org.jetbrains.kotlin.ir.types.impl.originalKotlinType
 import org.jetbrains.kotlin.ir.util.*
 import org.jetbrains.kotlin.utils.addToStdlib.firstNotNullResult
@@ -247,8 +247,8 @@ internal inline class SimpleInstruction(override val element: IrElement) : Instr
 
 internal class IrInterpreterEnvironment(val irBuiltIns: IrBuiltIns, val callStack: CallStack) {
     val irExceptions = mutableListOf<IrClass>()
-    private val mapOfEnums = mutableMapOf<IrSymbol, Complex>()
-    private val mapOfObjects = mutableMapOf<IrSymbol, Complex>()
+    val mapOfEnums = mutableMapOf<IrSymbol, Complex>()
+    val mapOfObjects = mutableMapOf<IrSymbol, Complex>()
 }
 
 class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<IdSignature, IrBody> = emptyMap()) {
@@ -298,7 +298,7 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
                 (0 until element.valueArgumentsCount).map { CompoundInstruction(element.getValueArgument(it)) }.reversed().forEach { callStack.addInstruction(it) }
             }
             is IrInstanceInitializerCall -> {
-                callStack.addInstruction(SimpleInstruction(element))
+                //callStack.addInstruction(SimpleInstruction(element))
                 val irClass = element.classSymbol.owner
 
                 // init blocks processing
@@ -307,7 +307,11 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
 
                 // properties processing
                 val classProperties = irClass.declarations.filterIsInstance<IrProperty>()
-                classProperties.mapNotNull { it.backingField?.initializer?.expression }.reversed().forEach { callStack.addInstruction(CompoundInstruction(it)) }
+                classProperties.filter { it.backingField?.initializer?.expression != null }.reversed().forEach { callStack.addInstruction(CompoundInstruction(it.backingField)) }
+            }
+            is IrField -> {
+                callStack.addInstruction(SimpleInstruction(element))
+                callStack.addInstruction(CompoundInstruction(element.initializer?.expression))
             }
             is IrReturn -> {
                 callStack.addInstruction(SimpleInstruction(element)) //2
@@ -391,6 +395,30 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
 //                element.result
             }
             is IrGetField -> callStack.addInstruction(SimpleInstruction(element))
+            is IrSetField -> {
+                // receiver is null, for example, for top level fields; cannot interpret set on top level var
+                if (element.receiver.let { it == null || (it.type.classifierOrNull?.owner as? IrClass)?.isObject == true }) {
+                    error("Cannot interpret set method on top level properties")
+                }
+
+                callStack.addInstruction(SimpleInstruction(element))
+                callStack.addInstruction(CompoundInstruction(element.value))
+            }
+            is IrGetObjectValue -> {
+                val objectClass = element.symbol.owner
+                environment.mapOfObjects[objectClass.symbol]?.let { return callStack.pushState(it) }
+
+                when {
+                    objectClass.hasAnnotation(evaluateIntrinsicAnnotation) ->
+                        environment.mapOfObjects[objectClass.symbol] = Wrapper.getCompanionObject(objectClass)
+                    else -> {
+                        val constructor = objectClass.constructors.first()
+                        val constructorCall = IrConstructorCallImpl.fromSymbolOwner(constructor.returnType, constructor.symbol)
+                        callStack.addInstruction(SimpleInstruction(element))
+                        callStack.addInstruction(CompoundInstruction(constructorCall))
+                    }
+                }
+            }
 
             else -> TODO("${element.javaClass} not supported")
         }
@@ -417,6 +445,12 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
                 interpretConstructor(element)
             }
             is IrInstanceInitializerCall -> interpretInstanceInitializerCall(element)
+            is IrField -> {
+                val irClass = element.parentAsClass
+                val receiver = irClass.thisReceiver!!.symbol
+                val receiverState = callStack.getVariable(receiver).state
+                receiverState.setField(Variable(element.correspondingPropertySymbol!!, callStack.popState()))
+            }
             is IrConst<*> -> {
 //                dataStack.push(element.toPrimitive())
                 callStack.pushState(element.toPrimitive())
@@ -484,6 +518,8 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
                 }
             }
             is IrGetField -> interpretGetField(element)
+            is IrSetField -> interpretSetField(element)
+            is IrGetObjectValue -> interpretGetObjectValue(element)
             else -> TODO("${element.javaClass} not supported for interpretation")
         }
     }
@@ -527,10 +563,11 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
             else -> property.owner.name.asString()
         }
         val args = getArgs(irFunction)
+        callStack.dropFrame()
 
         val receiverType = irFunction.dispatchReceiverParameter?.type
         val argsType = listOfNotNull(receiverType) + irFunction.valueParameters.map { it.type }
-        val argsValues = args.map { (it as? Primitive<*>)?.value ?: it }
+        val argsValues = args.map { if (it is Primitive<*>) it.value else it }
 
         fun IrType.getOnlyName(): String {
             return when {
@@ -545,7 +582,7 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
             val result = when (argsType.size) {
                 1 -> interpretUnaryFunction(methodName, argsType[0].getOnlyName(), argsValues[0])
                 2 -> when (methodName) {
-                    //"rangeTo" -> return calculateRangeTo(irFunction.returnType)
+                    "rangeTo" -> return calculateRangeTo(irFunction.returnType, args)
                     else -> interpretBinaryFunction(
                         methodName, argsType[0].getOnlyName(), argsType[1].getOnlyName(), argsValues[0], argsValues[1]
                     )
@@ -557,9 +594,25 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
                 else -> throw InterpreterError("Unsupported number of arguments for invocation as builtin functions")
             }
             // TODO check "result is Unit"
-            callStack.dropFrame()
             callStack.pushState(result.toState(irFunction.returnType))
         }
+    }
+
+    private fun calculateRangeTo(type: IrType, args: List<State>) {
+        val constructor = type.classOrNull!!.owner.constructors.first()
+        val constructorCall = IrConstructorCallImpl.fromSymbolOwner(constructor.returnType, constructor.symbol)
+        val constructorValueParameters = constructor.valueParameters.map { it.symbol }
+
+        val primitiveValueParameters = args.map { it as Primitive<*> }
+        primitiveValueParameters.forEachIndexed { index, primitive ->
+            constructorCall.putValueArgument(index, primitive.value.toIrConst(constructorValueParameters[index].owner.type))
+        }
+
+//        constructorValueParameters.zip(primitiveValueParameters).map { Variable(it.first, it.second) }
+        callStack.addInstruction(CompoundInstruction(constructorCall))
+//        stack.newFrame(initPool = ) {
+//            constructorCall.interpret()
+//        }
     }
 
     private fun interpretInstanceInitializerCall(call: IrInstanceInitializerCall) {
@@ -581,17 +634,30 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
         val valueArguments = constructorCall.symbol.owner.valueParameters.map { callStack.popState() }.reversed()
 
         val constructor = constructorCall.symbol.owner
-        callStack.newFrame(constructor, listOf())
-
         val irClass = constructor.parentAsClass
         val classState = when (constructorCall) {
             is IrConstructorCall -> Variable(constructorCall.getThisReceiver(), Common(irClass))
             else -> callStack.getVariable(constructorCall.getThisReceiver())
         }
-        callStack.addVariable(classState)
 
+        callStack.newFrame(constructor, listOf())
+        callStack.addVariable(classState)
         constructor.valueParameters.forEachIndexed { i, param -> callStack.addVariable(Variable(param.symbol, valueArguments[i])) }
+        val superReceiver = when (val irStatement = constructor.body!!.statements[0]) {
+            is IrTypeOperatorCall -> (irStatement.argument as IrFunctionAccessExpression).getThisReceiver() // for enums
+            is IrFunctionAccessExpression -> irStatement.getThisReceiver()
+            is IrBlock -> (irStatement.statements.last() as IrFunctionAccessExpression).getThisReceiver()
+            else -> TODO("${irStatement::class.java} is not supported as first statement in constructor call")
+        }
+        callStack.addVariable(Variable(superReceiver, classState.state))
+
         callStack.addInstruction(CompoundInstruction(constructor))
+    }
+
+    private fun interpretSetField(expression: IrSetField) {
+        val receiver = (expression.receiver as IrDeclarationReference).symbol
+        val propertySymbol = expression.symbol.owner.correspondingPropertySymbol!!
+        callStack.getVariable(receiver).apply { this.state.setField(Variable(propertySymbol, callStack.popState())) }
     }
 
     private fun interpretGetField(expression: IrGetField) {
@@ -620,5 +686,10 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
                 callStack.pushState(result!!)
             }
         }
+    }
+
+    private fun interpretGetObjectValue(expression: IrGetObjectValue) {
+        val objectClass = expression.symbol.owner
+        environment.mapOfObjects[objectClass.symbol] = callStack.peekState() as Complex
     }
 }
