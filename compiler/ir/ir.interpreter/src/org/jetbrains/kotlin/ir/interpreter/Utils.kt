@@ -248,6 +248,8 @@ inline fun withExceptionHandler(block: () -> Any?): Any? {
 internal inline fun withExceptionHandler(environment: IrInterpreterEnvironment, block: () -> Unit) {
     try {
         block()
+        val possibleException = environment.callStack.peekState() as? ExceptionState
+        if (possibleException != null) environment.callStack.dropFrameUntilTryCatch()
     } catch (e: Throwable) {
         e.handleUserException(environment)
     }
@@ -261,9 +263,9 @@ internal fun Throwable.handleUserException(environment: IrInterpreterEnvironment
     environment.callStack.dropFrameUntilTryCatch()
 }
 
-internal fun IrFunction.getArgsForMethodInvocation(interpreter: IrInterpreter, methodType: MethodType, args: List<Variable>): List<Any?> {
+internal fun IrFunction.getArgsForMethodInvocation(interpreter: IrInterpreter, methodType: MethodType, args: List<State>): List<Any?> {
     val argsValues = args
-        .mapIndexed { index, variable -> variable.state.wrap(interpreter, methodType.parameterType(index)) }
+        .mapIndexed { index, state -> state.wrap(interpreter, methodType.parameterType(index)) }
         .toMutableList()
 
     // TODO if vararg isn't last parameter

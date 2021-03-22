@@ -19,9 +19,11 @@ import org.jetbrains.kotlin.ir.interpreter.builtins.interpretUnaryFunction
 import org.jetbrains.kotlin.ir.interpreter.exceptions.InterpreterError
 import org.jetbrains.kotlin.ir.interpreter.exceptions.InterpreterTimeOutError
 import org.jetbrains.kotlin.ir.interpreter.exceptions.throwAsUserException
+import org.jetbrains.kotlin.ir.interpreter.intrinsics.BetterIntrinsicEvaluator
 import org.jetbrains.kotlin.ir.interpreter.intrinsics.IntrinsicEvaluator
 import org.jetbrains.kotlin.ir.interpreter.proxy.CommonProxy.Companion.asProxy
 import org.jetbrains.kotlin.ir.interpreter.proxy.Proxy
+import org.jetbrains.kotlin.ir.interpreter.proxy.wrap
 import org.jetbrains.kotlin.ir.interpreter.stack.Variable
 import org.jetbrains.kotlin.ir.interpreter.state.*
 import org.jetbrains.kotlin.ir.interpreter.state.Complex
@@ -259,22 +261,66 @@ internal interface Instruction {
 }
 internal inline class CompoundInstruction(override val element: IrElement?) : Instruction // must unwind first
 internal inline class SimpleInstruction(override val element: IrElement) : Instruction   // must interpret as is
+internal inline class IntrinsicInstruction(override val element: IrFunction) : Instruction
 
 internal class IrInterpreterEnvironment(val irBuiltIns: IrBuiltIns, val callStack: CallStack) {
     val irExceptions = mutableListOf<IrClass>()
-    val mapOfEnums = mutableMapOf<IrSymbol, Complex>()
-    val mapOfObjects = mutableMapOf<IrSymbol, Complex>()
+    var mapOfEnums = mutableMapOf<IrSymbol, Complex>()
+    var mapOfObjects = mutableMapOf<IrSymbol, Complex>()
+
+    private constructor(environment: IrInterpreterEnvironment) : this(environment.irBuiltIns, CallStack()) {
+        irExceptions.addAll(environment.irExceptions)
+        mapOfEnums = environment.mapOfEnums
+        mapOfObjects = environment.mapOfObjects
+    }
+
+    fun copyWithNewCallStack(): IrInterpreterEnvironment {
+        return IrInterpreterEnvironment(this)
+    }
 }
 
-class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<IdSignature, IrBody> = emptyMap()) {
-    private val environment = IrInterpreterEnvironment(irBuiltIns, CallStack())
+class IrInterpreter private constructor(
+    val irBuiltIns: IrBuiltIns,
+    private val bodyMap: Map<IdSignature, IrBody>,
+    private val environment: IrInterpreterEnvironment
+) {
     private val callStack: CallStack
         get() = environment.callStack
     private var commandCount = 0
 
+    constructor(irBuiltIns: IrBuiltIns, bodyMap: Map<IdSignature, IrBody> = emptyMap()) :
+            this(irBuiltIns, bodyMap, IrInterpreterEnvironment(irBuiltIns, CallStack()))
+
+    private constructor(environment: IrInterpreterEnvironment, bodyMap: Map<IdSignature, IrBody> = emptyMap()) :
+            this(environment.irBuiltIns, bodyMap, environment)
+
     private fun incrementAndCheckCommands() {
         commandCount++
         if (commandCount >= MAX_COMMANDS) InterpreterTimeOutError().handleUserException(environment)
+    }
+
+    private fun Any?.getType(defaultType: IrType): IrType {
+        return when (this) {
+            is Boolean -> irBuiltIns.booleanType
+            is Char -> irBuiltIns.charType
+            is Byte -> irBuiltIns.byteType
+            is Short -> irBuiltIns.shortType
+            is Int -> irBuiltIns.intType
+            is Long -> irBuiltIns.longType
+            is String -> irBuiltIns.stringType
+            is Float -> irBuiltIns.floatType
+            is Double -> irBuiltIns.doubleType
+            null -> irBuiltIns.nothingNType
+            else -> defaultType
+        }
+    }
+
+    private fun Instruction.handle() {
+        when (this) {
+            is CompoundInstruction -> unwindInstruction(this)
+            is SimpleInstruction -> interpret(this.element)
+            is IntrinsicInstruction -> BetterIntrinsicEvaluator.evaluate(this.element, environment)
+        }
     }
 
     fun interpret(expression: IrExpression, file: IrFile? = null): IrExpression {
@@ -282,14 +328,31 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
         callStack.newFrame(expression, listOf(CompoundInstruction(expression)), file)
 
         while (!callStack.hasNoInstructions()) {
-            when (val instruction = callStack.popInstruction()) {
-                is CompoundInstruction -> unwindInstruction(instruction)
-                is SimpleInstruction -> interpret(instruction.element)
-            }
+            callStack.popInstruction().handle()
             incrementAndCheckCommands()
         }
 
         return callStack.popState().toIrExpression(expression).apply { callStack.dropFrame() }
+    }
+
+    private fun withNewCallStack(block: IrInterpreter.() -> Any?): Any? {
+        return with(IrInterpreter(environment.copyWithNewCallStack(), bodyMap)) {
+            block()
+        }
+    }
+
+    internal fun IrFunction.proxyInterpret(valueArguments: List<Variable>, expectedResultClass: Class<*> = Any::class.java): Any? {
+        return withNewCallStack {
+            callStack.newFrame(this@proxyInterpret, listOf(CompoundInstruction(this@proxyInterpret)))
+            valueArguments.forEach { callStack.addVariable(it) }
+
+            while (!callStack.hasNoInstructions()) { // TODO execute only instructions of this function
+                callStack.popInstruction().handle()
+                incrementAndCheckCommands()
+            }
+
+            callStack.popState().wrap(this@IrInterpreter, expectedResultClass).apply { callStack.dropFrame() }
+        }
     }
 
     private fun unwindInstruction(instruction: CompoundInstruction) {
@@ -297,7 +360,7 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
             null -> return
             is IrSimpleFunction -> {
 //                if (stack.getStackCount() >= MAX_STACK) StackOverflowError().throwAsUserException()
-//                if (irFunction.body is IrSyntheticBody) return handleIntrinsicMethods(irFunction)
+                if (element.body is IrSyntheticBody) return handleIntrinsicMethods(element)
                 callStack.addInstruction(SimpleInstruction(element))
                 element.body?.let { callStack.addInstruction(CompoundInstruction(it)) }
                     ?: throw InterpreterError("Ir function must be with body")
@@ -467,6 +530,7 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
                 callStack.addInstruction(SimpleInstruction(element))
                 element.elements.reversed().forEach { callStack.addInstruction(CompoundInstruction(it)) }
             }
+            is IrFunctionExpression -> callStack.addInstruction(SimpleInstruction(element))
 
             else -> TODO("${element.javaClass} not supported")
         }
@@ -579,12 +643,7 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
                     )
                 }
             }
-            is IrTypeOperatorCall -> {
-                when (element.operator) {
-                    IrTypeOperator.IMPLICIT_COERCION_TO_UNIT -> callStack.popState()
-                    else -> TODO("TypeOperator ${element.operator} not implemented")
-                }
-            }
+            is IrTypeOperatorCall -> interpretTypeOperatorCall(element)
             is IrBlock -> {
                 callStack.dropSubFrame()
             }
@@ -610,25 +669,30 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
             is IrGetObjectValue -> interpretGetObjectValue(element)
             is IrVararg -> interpretVararg(element)
             is IrValueParameter -> interpretValueParameter(element)
+            is IrFunctionExpression -> interpretFunctionExpression(element)
             else -> TODO("${element.javaClass} not supported for interpretation")
         }
     }
 
-//    private fun MethodHandle?.invokeMethod(irFunction: IrFunction, args: List<State>) {
-//        this ?: return handleIntrinsicMethods(irFunction)
-//        val argsForMethodInvocation = irFunction.getArgsForMethodInvocation(this@IrInterpreter, this.type(), args)
-//        val result = withExceptionHandler { this.invokeWithArguments(argsForMethodInvocation) }
-//        stack.pushReturnValue(result.toState(result.getType(irFunction.returnType)))
-//    }
-//
-//    private fun handleIntrinsicMethods(irFunction: IrFunction) {
-//        IntrinsicEvaluator().evaluate(irFunction, stack) { this.interpret() }
-//    }
+    private fun MethodHandle?.invokeMethod(irFunction: IrFunction, args: List<State>) {
+        this ?: return handleIntrinsicMethods(irFunction)
+        val argsForMethodInvocation = irFunction.getArgsForMethodInvocation(this@IrInterpreter, this.type(), args)
+        withExceptionHandler(environment) {
+            val result = this.invokeWithArguments(argsForMethodInvocation)
+            callStack.dropFrame()
+            callStack.pushState(result.toState(result.getType(irFunction.returnType)))
+        }
+    }
+
+    private fun handleIntrinsicMethods(irFunction: IrFunction) {
+        BetterIntrinsicEvaluator.unwindInstructions(irFunction, environment).forEach { callStack.addInstruction(it) }
+    }
 
     private fun interpretCall(call: IrCall) {
         val valueArguments = call.symbol.owner.valueParameters.map { callStack.popState() }.reversed()
         val extensionReceiver = call.extensionReceiver?.let { callStack.popState() }?.checkNullability(call.extensionReceiver?.type)
         var dispatchReceiver = call.dispatchReceiver?.let { callStack.popState() }?.checkNullability(call.dispatchReceiver?.type)
+        val args = listOfNotNull(dispatchReceiver, extensionReceiver) + valueArguments
 
         val irFunction = dispatchReceiver?.getIrFunctionByIrCall(call) ?: call.symbol.owner
         dispatchReceiver = when (irFunction.parent) {
@@ -664,37 +728,27 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
         // inline only methods are not presented in lookup table, so must be interpreted instead of execution
         val isInlineOnly = irFunction.hasAnnotation(FqName("kotlin.internal.InlineOnly"))
         when {
-//            dispatchReceiver is Wrapper && !isInlineOnly -> dispatchReceiver.getMethod(irFunction).invokeMethod(irFunction)
-//            irFunction.hasAnnotation(evaluateIntrinsicAnnotation) -> Wrapper.getStaticMethod(irFunction).invokeMethod(irFunction)
-//            dispatchReceiver is KFunctionState && expression.symbol.owner.name.asString() == "invoke" -> irFunction.interpret()
-//            dispatchReceiver is ReflectionState -> Wrapper.getReflectionMethod(irFunction).invokeMethod(irFunction)
-            dispatchReceiver is Primitive<*> -> calculateBuiltIns(irFunction) // 'is Primitive' check for js char, js long and get field for primitives
-            irFunction.body == null -> /*irFunction.trySubstituteFunctionBody() ?: irFunction.tryCalculateLazyConst() ?:*/ calculateBuiltIns(irFunction)
+            dispatchReceiver is Wrapper && !isInlineOnly -> dispatchReceiver.getMethod(irFunction).invokeMethod(irFunction, args)
+            irFunction.hasAnnotation(evaluateIntrinsicAnnotation) -> Wrapper.getStaticMethod(irFunction).invokeMethod(irFunction, args)
+            dispatchReceiver is KFunctionState && call.symbol.owner.name.asString() == "invoke" -> callStack.addInstruction(CompoundInstruction(irFunction))
+            dispatchReceiver is ReflectionState -> Wrapper.getReflectionMethod(irFunction).invokeMethod(irFunction, args)
+            dispatchReceiver is Primitive<*> -> calculateBuiltIns(irFunction, args) // 'is Primitive' check for js char, js long and get field for primitives
+            irFunction.body == null ->
+                /*irFunction.trySubstituteFunctionBody() ?: irFunction.tryCalculateLazyConst() ?:*/ calculateBuiltIns(irFunction, args)
             else -> callStack.addInstruction(CompoundInstruction(irFunction))
         }
     }
 
-    private fun getArgs(irFunction: IrFunction): List<State> {
-        val args = mutableListOf<State>()
-
-        irFunction.getDispatchReceiver()?.let { args += callStack.getVariable(it).state }
-        irFunction.getExtensionReceiver()?.let { args += callStack.getVariable(it).state }
-        irFunction.valueParameters.forEach { args += callStack.getVariable(it.symbol).state }
-
-        return args
-    }
-
-    private fun calculateBuiltIns(irFunction: IrFunction) {
+    private fun calculateBuiltIns(irFunction: IrFunction, args: List<State>) {
         val methodName = when (val property = (irFunction as? IrSimpleFunction)?.correspondingPropertySymbol) {
             null -> irFunction.name.asString()
             else -> property.owner.name.asString()
         }
-        val args = getArgs(irFunction)
         callStack.dropFrame()
 
         val receiverType = irFunction.dispatchReceiverParameter?.type
         val argsType = listOfNotNull(receiverType) + irFunction.valueParameters.map { it.type }
-        val argsValues = args.map { if (it is Primitive<*>) it.value else it }
+        val argsValues = args.map { it.wrap(this, calledFromBuiltIns = methodName !in setOf("plus", IrBuiltIns.OperatorNames.EQEQ)) }
 
         fun IrType.getOnlyName(): String {
             return when {
@@ -721,7 +775,7 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
                 else -> throw InterpreterError("Unsupported number of arguments for invocation as builtin functions")
             }
             // TODO check "result is Unit"
-            callStack.pushState(result.toState(irFunction.returnType))
+            callStack.pushState(result.toState(result.getType(irFunction.returnType)))
         }
     }
 
@@ -761,20 +815,6 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
         val valueArguments = constructorCall.symbol.owner.valueParameters.map { callStack.popState() }.reversed()
         val constructor = constructorCall.symbol.owner
         val irClass = constructor.parentAsClass
-
-//        if (irClass.hasAnnotation(evaluateIntrinsicAnnotation) || irClass.fqNameWhenAvailable!!.startsWith(Name.identifier("java"))) {
-//            return Wrapper.getConstructorMethod(constructor).invokeMethod(constructor, valueArguments)
-//        }
-
-//        if (irClass.defaultType.isArray() || irClass.defaultType.isPrimitiveArray()) {
-//            // array constructor doesn't have body so must be treated separately
-//            return stack.newFrame(constructor, initPool = valueArguments) { handleIntrinsicMethods(constructor) }
-//                .apply {
-//                    val array = stack.popReturnValue() as Primitive<*>
-//                    stack.pushReturnValue(Primitive(array.value, constructorCall.type))
-//                }
-//        }
-
         val classState = when (constructorCall) {
             is IrConstructorCall -> Variable(constructorCall.getThisReceiver(), Common(irClass))
             else -> callStack.getVariable(constructorCall.getThisReceiver())
@@ -784,6 +824,17 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
         callStack.newFrame(constructor, listOf())
         callStack.addVariable(classState)
         constructor.valueParameters.forEachIndexed { i, param -> callStack.addVariable(Variable(param.symbol, valueArguments[i])) }
+
+        if (irClass.hasAnnotation(evaluateIntrinsicAnnotation) || irClass.fqNameWhenAvailable!!.startsWith(Name.identifier("java"))) {
+            return Wrapper.getConstructorMethod(constructor).invokeMethod(constructor, valueArguments)
+        }
+
+        if (irClass.defaultType.isArray() || irClass.defaultType.isPrimitiveArray()) {
+            // array constructor doesn't have body so must be treated separately
+            callStack.addVariable(Variable(constructor.symbol, KTypeState(constructorCall.type, irBuiltIns.anyClass.owner)))
+            return handleIntrinsicMethods(constructor)
+        }
+
         val superReceiver = when (val irStatement = constructor.body!!.statements[0]) {
             is IrTypeOperatorCall -> (irStatement.argument as IrFunctionAccessExpression).getThisReceiver() // for enums
             is IrFunctionAccessExpression -> irStatement.getThisReceiver()
@@ -879,11 +930,11 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
                 }
                 is Common -> when {
                     result.irClass.defaultType.isUnsignedArray() -> arrayToList((result.fields.single().state as Primitive<*>).value)
-                    else -> TODO("vararg proxy")//listOf(result.asProxy(this))
+                    else -> listOf(result.asProxy(this))
                 }
                 else -> listOf(result)
             }
-        }
+        }.reversed()
 
         val array = when {
             expression.type.isUnsignedArray() -> {
@@ -901,5 +952,49 @@ class BetterIrInterpreter(val irBuiltIns: IrBuiltIns, private val bodyMap: Map<I
             else -> args.toPrimitiveStateArray(expression.type)
         }
         callStack.pushState(array)
+    }
+
+    private fun interpretFunctionExpression(expression: IrFunctionExpression) {
+        val function = KFunctionState(expression.function, expression.type.classOrNull!!.owner)
+        //TODO //if (expression.function.isLocal) function.fields.addAll(stack.getAll()) // TODO save only necessary declarations
+        callStack.pushState(function)
+    }
+
+    private fun interpretTypeOperatorCall(expression: IrTypeOperatorCall) {
+        val typeClassifier = expression.typeOperand.classifierOrFail
+        val isReified = (typeClassifier.owner as? IrTypeParameter)?.isReified == true
+        val isErased = typeClassifier.owner is IrTypeParameter && !isReified
+        val typeOperand = if (isReified) (callStack.getVariable(typeClassifier).state as KTypeState).irType else expression.typeOperand
+
+        when (expression.operator) {
+            IrTypeOperator.IMPLICIT_COERCION_TO_UNIT -> {
+                callStack.popState()
+                //getOrCreateObjectValue(irBuiltIns.unitClass.owner).check { return it } // TODO
+            }
+            IrTypeOperator.CAST, IrTypeOperator.IMPLICIT_CAST -> {
+                if (!isErased && !callStack.peekState()!!.isSubtypeOf(typeOperand)) {
+                    val convertibleClassName = callStack.popState().irClass.fqNameWhenAvailable
+                    ClassCastException("$convertibleClassName cannot be cast to ${typeOperand.render()}").throwAsUserException()
+                }
+            }
+            IrTypeOperator.SAFE_CAST -> {
+                if (!isErased && !callStack.peekState()!!.isSubtypeOf(typeOperand)) {
+                    callStack.popState()
+                    callStack.pushState(null.toState(irBuiltIns.nothingNType))
+                }
+            }
+            IrTypeOperator.INSTANCEOF -> {
+                val isInstance = callStack.popState().isSubtypeOf(typeOperand) || isErased
+                callStack.pushState(isInstance.toState(irBuiltIns.booleanType))
+            }
+            IrTypeOperator.NOT_INSTANCEOF -> {
+                val isInstance = callStack.popState().isSubtypeOf(typeOperand) || isErased
+                callStack.pushState((!isInstance).toState(irBuiltIns.booleanType))
+            }
+            IrTypeOperator.IMPLICIT_NOTNULL -> {
+
+            }
+            else -> TODO("${expression.operator} not implemented")
+        }
     }
 }
