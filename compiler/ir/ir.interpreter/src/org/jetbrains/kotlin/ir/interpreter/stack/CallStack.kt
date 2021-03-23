@@ -9,6 +9,7 @@ import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.declarations.IrFile
 import org.jetbrains.kotlin.ir.declarations.IrFunction
 import org.jetbrains.kotlin.ir.declarations.name
+import org.jetbrains.kotlin.ir.expressions.IrCatch
 import org.jetbrains.kotlin.ir.expressions.IrReturn
 import org.jetbrains.kotlin.ir.expressions.IrTry
 import org.jetbrains.kotlin.ir.interpreter.CompoundInstruction
@@ -70,7 +71,10 @@ internal class CallStack {
                 return
             }
         }
-        dropFrame()
+        when { // check that last frame is not a function itself; use case for proxyInterpret
+            frames.size != 1 -> dropFrame()
+            else -> newSubFrame(irReturn, emptyList()) // just stub frame
+        }
         pushState(result)
     }
 
@@ -103,6 +107,12 @@ internal class CallStack {
 //                    frameOwner.finallyExpression?.let { addInstruction(CompoundInstruction(it)) }
                     frameOwner.catches.reversed().forEach { addInstruction(CompoundInstruction(it)) }
                     return
+                } else if (frameOwner is IrCatch) {
+                    var instruction = popInstruction()
+                    while (instruction.element !is IrTry) instruction = popInstruction()
+                    addInstruction(instruction)
+                    pushState(exception)
+                    return
                 }
                 dropSubFrame() // TODO drop with info loosing
             }
@@ -111,6 +121,7 @@ internal class CallStack {
     }
 
     fun hasNoInstructions() = frames.isEmpty() || (frames.size == 1 && frames.first().hasNoInstructions())
+    fun hasNoInstructionsInCurrentSubFrame() = getCurrentFrame().hasNoInstructionsInCurrentSubFrame()
 
     fun addInstruction(instruction: Instruction) {
         getCurrentFrame().addInstruction(instruction)
@@ -159,6 +170,7 @@ private class CallStackFrameContainer(frame: SubFrame, val irFile: IrFile? = nul
     fun hasNoFrames() = innerStack.isEmpty()
     fun hasOneFrameLeft() = innerStack.size == 1
     fun hasNoInstructions() = hasNoFrames() || (innerStack.size == 1 && innerStack.first().isEmpty())
+    fun hasNoInstructionsInCurrentSubFrame() = getCurrentFrame().isEmpty()
 
     fun addInstruction(instruction: Instruction) {
         getCurrentFrame().pushInstruction(instruction)

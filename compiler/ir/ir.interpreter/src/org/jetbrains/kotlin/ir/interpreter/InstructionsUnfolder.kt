@@ -61,8 +61,8 @@ internal fun unfoldInstruction(element: IrElement?, environment: IrInterpreterEn
         is IrSpreadElement -> callStack.addInstruction(CompoundInstruction(element.expression))
         is IrTry -> unfoldTry(element, callStack)
         is IrCatch -> unfoldCatch(element, callStack)
-//        is IrThrow -> unfoldThrow(element, callStack)
-//        is IrStringConcatenation -> unfoldStringConcatenation(element, callStack)
+        is IrThrow -> unfoldThrow(element, callStack)
+        is IrStringConcatenation -> unfoldStringConcatenation(element, callStack)
         is IrFunctionExpression -> callStack.addInstruction(SimpleInstruction(element))
 //        is IrFunctionReference -> unfoldFunctionReference(element, callStack)
 //        is IrPropertyReference -> unfoldPropertyReference(element, callStack)
@@ -296,10 +296,24 @@ private fun unfoldCatch(element: IrCatch, callStack: CallStack) {
         callStack.popState()
         val frameOwner = callStack.getCurrentFrameOwner() as IrTry
         callStack.dropSubFrame() // drop other catch blocks
-        callStack.newSubFrame(frameOwner, listOf()) // new frame with IrTry as owner to interpret finally block at the end
+        callStack.newSubFrame(element, listOf()) // new frame with IrTry as owner to interpret finally block at the end
         callStack.addVariable(Variable(element.catchParameter.symbol, exceptionState))
         callStack.addInstruction(SimpleInstruction(frameOwner))
         callStack.addInstruction(CompoundInstruction(element.result))
+    }
+}
+
+private fun unfoldThrow(expression: IrThrow, callStack: CallStack) {
+    callStack.addInstruction(SimpleInstruction(expression))
+    callStack.addInstruction(CompoundInstruction(expression.value))
+}
+
+private fun unfoldStringConcatenation(expression: IrStringConcatenation, callStack: CallStack) {
+    callStack.newSubFrame(expression, listOf())
+    callStack.addInstruction(SimpleInstruction(expression))
+    expression.arguments.reversed().forEach {
+        callStack.addInstruction(SimpleInstruction(expression))
+        callStack.addInstruction(CompoundInstruction(it))
     }
 }
 
