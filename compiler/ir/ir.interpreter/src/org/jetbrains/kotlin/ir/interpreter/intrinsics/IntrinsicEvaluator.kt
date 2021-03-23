@@ -10,7 +10,6 @@ import org.jetbrains.kotlin.ir.interpreter.exceptions.InterpreterMethodNotFoundE
 import org.jetbrains.kotlin.ir.interpreter.stack.Stack
 import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.declarations.IrFunction
-import org.jetbrains.kotlin.ir.interpreter.CallStack
 import org.jetbrains.kotlin.ir.interpreter.Instruction
 import org.jetbrains.kotlin.ir.interpreter.IrInterpreterEnvironment
 
@@ -22,8 +21,8 @@ internal class IntrinsicEvaluator {
 //            ArrayOfNulls.equalTo(irFunction) -> ArrayOfNulls.evaluate(irFunction, stack, interpret)
 //            EnumValues.equalTo(irFunction) -> EnumValues.evaluate(irFunction, stack, interpret)
 //            EnumValueOf.equalTo(irFunction) -> EnumValueOf.evaluate(irFunction, stack, interpret)
-            EnumHashCode.equalTo(irFunction) -> EnumHashCode.evaluate(irFunction, stack, interpret)
-            JsPrimitives.equalTo(irFunction) -> JsPrimitives.evaluate(irFunction, stack, interpret)
+//            EnumHashCode.equalTo(irFunction) -> EnumHashCode.evaluate(irFunction, stack, interpret)
+//            JsPrimitives.equalTo(irFunction) -> JsPrimitives.evaluate(irFunction, stack, interpret)
 //            ArrayConstructor.equalTo(irFunction) -> ArrayConstructor.evaluate(irFunction, stack, interpret)
             SourceLocation.equalTo(irFunction) -> SourceLocation.evaluate(irFunction, stack, interpret)
             AssertIntrinsic.equalTo(irFunction) -> AssertIntrinsic.evaluate(irFunction, stack, interpret)
@@ -41,7 +40,7 @@ internal object BetterIntrinsicEvaluator {
             EnumValues.equalTo(irFunction) -> EnumValues.unwind(irFunction, environment)
             EnumValueOf.equalTo(irFunction) -> EnumValueOf.unwind(irFunction, environment)
 //            EnumHashCode.equalTo(irFunction) -> EnumHashCode.unwind(irFunction, environment)
-//            JsPrimitives.equalTo(irFunction) -> JsPrimitives.unwind(irFunction, environment)
+            JsPrimitives.equalTo(irFunction) -> JsPrimitives.unwind(irFunction, environment)
             ArrayConstructor.equalTo(irFunction) -> ArrayConstructor.unwind(irFunction, environment)
 //            SourceLocation.equalTo(irFunction) -> SourceLocation.unwind(irFunction, environment)
 //            AssertIntrinsic.equalTo(irFunction) -> AssertIntrinsic.unwind(irFunction, environment)
@@ -57,7 +56,7 @@ internal object BetterIntrinsicEvaluator {
             EnumValues.equalTo(irFunction) -> EnumValues.evaluate(irFunction, environment)
             EnumValueOf.equalTo(irFunction) -> EnumValueOf.evaluate(irFunction, environment)
 //            EnumHashCode.equalTo(irFunction) -> EnumHashCode.evaluate(irFunction, environment)
-//            JsPrimitives.equalTo(irFunction) -> JsPrimitives.evaluate(irFunction, environment)
+            JsPrimitives.equalTo(irFunction) -> JsPrimitives.evaluate(irFunction, environment)
             ArrayConstructor.equalTo(irFunction) -> ArrayConstructor.evaluate(irFunction, environment)
 //            SourceLocation.equalTo(irFunction) -> SourceLocation.evaluate(irFunction, environment)
 //            AssertIntrinsic.equalTo(irFunction) -> AssertIntrinsic.evaluate(irFunction, environment)

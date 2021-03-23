@@ -169,38 +169,44 @@ internal object EnumValueOf : BetterIntrinsicBase() {
     }
 }
 
-internal object EnumHashCode : IntrinsicBase() {
+internal object EnumHashCode : BetterIntrinsicBase() {
     override fun equalTo(irFunction: IrFunction): Boolean {
         val fqName = irFunction.fqNameWhenAvailable.toString()
         return fqName == "kotlin.Enum.hashCode"
     }
 
-    override fun evaluate(irFunction: IrFunction, stack: Stack, interpret: IrElement.() -> ExecutionResult): ExecutionResult {
-        val hashCode = stack.getAll().single().state.hashCode()
-        stack.pushReturnValue(hashCode.toState(irFunction.returnType))
-        return Next
+    override fun unwind(irFunction: IrFunction, environment: IrInterpreterEnvironment): List<Instruction> {
+        return listOf(IntrinsicInstruction(irFunction))
+    }
+
+    override fun evaluate(irFunction: IrFunction, environment: IrInterpreterEnvironment) {
+        val hashCode = 0//environment.callStack.getAll().single().state.hashCode() //TODO
+        environment.callStack.pushState(hashCode.toState(irFunction.returnType))
     }
 }
 
-internal object JsPrimitives : IntrinsicBase() {
+internal object JsPrimitives : BetterIntrinsicBase() {
     override fun equalTo(irFunction: IrFunction): Boolean {
         val fqName = irFunction.fqNameWhenAvailable.toString()
         return fqName == "kotlin.Long.<init>" || fqName == "kotlin.Char.<init>"
     }
 
-    override fun evaluate(irFunction: IrFunction, stack: Stack, interpret: IrElement.() -> ExecutionResult): ExecutionResult {
+    override fun unwind(irFunction: IrFunction, environment: IrInterpreterEnvironment): List<Instruction> {
+        return listOf(IntrinsicInstruction(irFunction))
+    }
+
+    override fun evaluate(irFunction: IrFunction, environment: IrInterpreterEnvironment) {
         when (irFunction.fqNameWhenAvailable.toString()) {
             "kotlin.Long.<init>" -> {
-                val low = stack.getVariable(irFunction.valueParameters[0].symbol).state.asInt()
-                val high = stack.getVariable(irFunction.valueParameters[1].symbol).state.asInt()
-                stack.pushReturnValue((high.toLong().shl(32) + low).toState(irFunction.returnType))
+                val low = environment.callStack.getVariable(irFunction.valueParameters[0].symbol).state.asInt()
+                val high = environment.callStack.getVariable(irFunction.valueParameters[1].symbol).state.asInt()
+                environment.callStack.pushState((high.toLong().shl(32) + low).toState(irFunction.returnType))
             }
             "kotlin.Char.<init>" -> {
-                val value = stack.getVariable(irFunction.valueParameters[0].symbol).state.asInt()
-                stack.pushReturnValue(value.toChar().toState(irFunction.returnType))
+                val value = environment.callStack.getVariable(irFunction.valueParameters[0].symbol).state.asInt()
+                environment.callStack.pushState(value.toChar().toState(irFunction.returnType))
             }
         }
-        return Next
     }
 }
 
