@@ -55,7 +55,7 @@ internal fun unfoldInstruction(element: IrElement?, environment: IrInterpreterEn
         is IrWhileLoop -> unfoldWhileLoop(element, callStack)
         is IrDoWhileLoop -> unfoldDoWhileLoop(element, callStack)
         is IrWhen -> unfoldWhen(element, callStack)
-//        is Break -> unfoldBreak(element, callStack)
+        is IrBreak -> unfoldBreak(element, callStack)
         is IrContinue -> unfoldContinue(element, callStack)
         is IrVararg -> unfoldVararg(element, callStack)
         is IrSpreadElement -> callStack.addInstruction(CompoundInstruction(element.expression))
@@ -75,14 +75,16 @@ internal fun unfoldInstruction(element: IrElement?, environment: IrInterpreterEn
 
 private fun unfoldFunction(function: IrSimpleFunction, callStack: CallStack) {
     //if (stack.getStackCount() >= MAX_STACK) StackOverflowError().throwAsUserException()
-    callStack.addInstruction(SimpleInstruction(function))
-    if (function.body is IrSyntheticBody) return
+    // SimpleInstruction with function is added in IrCall
+    // It will serve as endpoint for all possible calls, there we drop frame and copy result to new one
+    if (function.body is IrSyntheticBody) return // TODO maybe remove
     function.body?.let { callStack.addInstruction(CompoundInstruction(it)) }
         ?: throw InterpreterError("Ir function must be with body")
 }
 
 private fun unfoldConstructor(constructor: IrConstructor, callStack: CallStack) {
-    callStack.addInstruction(SimpleInstruction(constructor))
+    // SimpleInstruction with function is added in constructor call
+    // It will serve as endpoint for all possible constructor calls, there we drop frame and return object
     callStack.addInstruction(CompoundInstruction(constructor.body!!))
 }
 
@@ -273,9 +275,12 @@ private fun unfoldWhen(element: IrWhen, callStack: CallStack) {
 }
 
 private fun unfoldContinue(element: IrContinue, callStack: CallStack) {
-    // TODO drop frames without stack values propagation
-    callStack.dropFrameUntil(element.loop, includeOwnerFrame = true)
+    callStack.unrollInstructionsForBreakContinue(element)
     callStack.addInstruction(CompoundInstruction(element.loop))
+}
+
+private fun unfoldBreak(element: IrBreak, callStack: CallStack) {
+    callStack.unrollInstructionsForBreakContinue(element)
 }
 
 private fun unfoldVararg(element: IrVararg, callStack: CallStack) {
@@ -292,11 +297,10 @@ private fun unfoldTry(element: IrTry, callStack: CallStack) {
 private fun unfoldCatch(element: IrCatch, callStack: CallStack) {
     val exceptionState = callStack.peekState() as? ExceptionState ?: return
     if (exceptionState.isSubtypeOf(element.catchParameter.type)) {
-        // if exception
         callStack.popState()
         val frameOwner = callStack.getCurrentFrameOwner() as IrTry
         callStack.dropSubFrame() // drop other catch blocks
-        callStack.newSubFrame(element, listOf()) // new frame with IrTry as owner to interpret finally block at the end
+        callStack.newSubFrame(element, listOf()) // new frame with IrTry instruction to interpret finally block at the end
         callStack.addVariable(Variable(element.catchParameter.symbol, exceptionState))
         callStack.addInstruction(SimpleInstruction(frameOwner))
         callStack.addInstruction(CompoundInstruction(element.result))
@@ -312,6 +316,8 @@ private fun unfoldStringConcatenation(expression: IrStringConcatenation, callSta
     callStack.newSubFrame(expression, listOf())
     callStack.addInstruction(SimpleInstruction(expression))
     expression.arguments.reversed().forEach {
+        // here we use intermediate instruction to check if interpretation returned Common state as result
+        // in this case we must call toString function explicitly
         callStack.addInstruction(SimpleInstruction(expression))
         callStack.addInstruction(CompoundInstruction(it))
     }

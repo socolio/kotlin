@@ -9,9 +9,7 @@ import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.declarations.IrFile
 import org.jetbrains.kotlin.ir.declarations.IrFunction
 import org.jetbrains.kotlin.ir.declarations.name
-import org.jetbrains.kotlin.ir.expressions.IrCatch
-import org.jetbrains.kotlin.ir.expressions.IrReturn
-import org.jetbrains.kotlin.ir.expressions.IrTry
+import org.jetbrains.kotlin.ir.expressions.*
 import org.jetbrains.kotlin.ir.interpreter.CompoundInstruction
 import org.jetbrains.kotlin.ir.interpreter.Instruction
 import org.jetbrains.kotlin.ir.interpreter.SimpleInstruction
@@ -59,10 +57,24 @@ internal class CallStack {
         frames.removeLast()
     }
 
-    fun dropFrameGracefully(irReturn: IrReturn, result: State) {
-        val frame = getCurrentFrame()
-        while (!frame.hasNoFrames()) {
-            val frameOwner = frame.currentSubFrameOwner
+    fun dropFrameAndCopyResult() {
+        val result = peekState() ?: return dropFrame()
+        popState()
+        dropFrame()
+        pushState(result)
+    }
+
+    fun dropSubFrame() {
+        getCurrentFrame().removeSubFrame()
+    }
+
+    fun returnFromFrameWithResult(irReturn: IrReturn) {
+        val result = popState()
+        var frame = getCurrentFrame()
+        var frameOwner = frame.currentSubFrameOwner
+        while (frameOwner != irReturn.returnTargetSymbol.owner || !frame.hasNoFrames()) {
+            frame = getCurrentFrame()
+            frameOwner = frame.currentSubFrameOwner
             dropSubFrame()
             if (frameOwner is IrTry) {
                 pushState(result)
@@ -78,15 +90,19 @@ internal class CallStack {
         pushState(result)
     }
 
-    fun dropSubFrame() {
-        getCurrentFrame().removeSubFrame()
-    }
-
-    fun dropFrameUntil(owner: IrElement, includeOwnerFrame: Boolean = false) {
-        while (getCurrentFrame().currentSubFrameOwner != owner) {
-            dropSubFrame()
+    fun unrollInstructionsForBreakContinue(breakContinue: IrBreakContinue) {
+        val isBreak = breakContinue is IrBreak
+        var frameOwner = getCurrentFrame().currentSubFrameOwner
+        while (frameOwner != breakContinue.loop) {
+            frameOwner = getCurrentFrame().currentSubFrameOwner
+            if (frameOwner is IrTry) {
+                addInstruction(CompoundInstruction(breakContinue))
+                addInstruction(CompoundInstruction(frameOwner.finallyExpression))
+                return
+            }
+            getCurrentFrame().removeSubFrameWithoutDataPropagation()
         }
-        if (includeOwnerFrame) dropSubFrame()
+        if (isBreak) getCurrentFrame().removeSubFrameWithoutDataPropagation()
     }
 
     fun dropFrameUntilTryCatch() {
@@ -96,7 +112,8 @@ internal class CallStack {
             while (!frame.hasNoFrames()) {
                 if (frames.size == 1 && frame.hasOneFrameLeft()) {
                     pushState(exception)
-                    return frame.dropInstructions()
+                    frame.dropInstructions()
+                    return
                 }
                 val frameOwner = frame.currentSubFrameOwner
                 if (frameOwner is IrTry) {
@@ -108,9 +125,7 @@ internal class CallStack {
                     frameOwner.catches.reversed().forEach { addInstruction(CompoundInstruction(it)) }
                     return
                 } else if (frameOwner is IrCatch) {
-                    var instruction = popInstruction()
-                    while (instruction.element !is IrTry) instruction = popInstruction()
-                    addInstruction(instruction)
+                    addInstruction(frame.dropInstructions()!!)
                     pushState(exception)
                     return
                 }
@@ -164,6 +179,10 @@ private class CallStackFrameContainer(frame: SubFrame, val irFile: IrFile? = nul
 
     fun removeSubFrame() {
         getCurrentFrame().peekState()?.let { if (innerStack.size > 1) innerStack[innerStack.size - 2].pushState(it) }
+        removeSubFrameWithoutDataPropagation()
+    }
+
+    fun removeSubFrameWithoutDataPropagation() {
         innerStack.removeLast()
     }
 
@@ -228,7 +247,7 @@ internal class SubFrame(private val instructions: MutableList<Instruction>, val 
         return instructions.removeFirst()
     }
 
-    fun dropInstructions() = instructions.clear()
+    fun dropInstructions() = instructions.firstOrNull()?.apply { instructions.clear() }
 
     fun pushState(state: State) {
         dataStack.push(state)

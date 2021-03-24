@@ -63,24 +63,6 @@ inline fun ExecutionResult.check(
     return this
 }
 
-/**
- * This method is analog of `checkcast` jvm bytecode operation. Throw exception whenever actual type is not a subtype of expected.
- */
-internal fun ExecutionResult.implicitCastIfNeeded(expectedType: IrType, actualType: IrType, stack: Stack): ExecutionResult {
-    if (actualType.classifierOrNull !is IrTypeParameterSymbol) return this
-
-    if (expectedType.classifierOrFail is IrTypeParameterSymbol) return this
-
-    val actualState = stack.peekReturnValue()
-    if (actualState is Primitive<*> && actualState.value == null) return this // this is handled as NullPointerException
-
-    if (!actualState.isSubtypeOf(expectedType)) {
-        val convertibleClassName = stack.popReturnValue().irClass.fqNameWhenAvailable
-        ClassCastException("$convertibleClassName cannot be cast to ${expectedType.render()}").throwAsUserException()
-    }
-    return this
-}
-
 object Next : ExecutionResult(ReturnLabel.REGULAR)
 object Return : ExecutionResult(ReturnLabel.RETURN)
 object BreakLoop : ExecutionResult(ReturnLabel.BREAK_LOOP)

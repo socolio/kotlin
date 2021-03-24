@@ -51,13 +51,8 @@ internal object EmptyArray : BetterIntrinsicBase() {
     }
 
     override fun evaluate(irFunction: IrFunction, environment: IrInterpreterEnvironment) {
-        val typeArgument = irFunction.typeParameters.map { environment.callStack.getVariable(it.symbol) }.single().state as KTypeState
-        val returnType = (irFunction.returnType as IrSimpleType).buildSimpleType {
-            arguments = listOf(makeTypeProjection(typeArgument.irType, Variance.INVARIANT))
-        }
-
-        environment.callStack.dropFrame()
-        environment.callStack.pushState(emptyArray<Any?>().toState(returnType))
+        val returnType = environment.callStack.getVariable(irFunction.symbol).state as KTypeState
+        environment.callStack.pushState(emptyArray<Any?>().toState(returnType.irType))
     }
 }
 
@@ -74,7 +69,6 @@ internal object ArrayOf : BetterIntrinsicBase() {
     override fun evaluate(irFunction: IrFunction, environment: IrInterpreterEnvironment) {
         val elementsSymbol = irFunction.valueParameters.single().symbol
         val varargVariable = environment.callStack.getVariable(elementsSymbol).state
-        environment.callStack.dropFrame()
         environment.callStack.pushState(varargVariable)
     }
 }
@@ -97,7 +91,6 @@ internal object ArrayOfNulls : BetterIntrinsicBase() {
             arguments = listOf(makeTypeProjection(typeArgument.irType, Variance.INVARIANT))
         }
 
-        environment.callStack.dropFrame()
         environment.callStack.pushState(array.toState(returnType))
     }
 }
@@ -129,7 +122,6 @@ internal object EnumValues : BetterIntrinsicBase() {
         val enumClass = getEnumClass(irFunction, environment)
 
         val enumEntries = enumClass.declarations.filterIsInstance<IrEnumEntry>().map { environment.callStack.popState() as Common }
-        environment.callStack.dropFrame()
         environment.callStack.pushState(enumEntries.toTypedArray().toState(irFunction.returnType))
     }
 }
@@ -161,12 +153,7 @@ internal object EnumValueOf : BetterIntrinsicBase() {
         return listOf(IntrinsicInstruction(irFunction), CompoundInstruction(enumEntry))
     }
 
-    override fun evaluate(irFunction: IrFunction, environment: IrInterpreterEnvironment) {
-        environment.callStack.popState().let {
-            environment.callStack.dropFrame()
-            environment.callStack.pushState(it)
-        }
-    }
+    override fun evaluate(irFunction: IrFunction, environment: IrInterpreterEnvironment) {}
 }
 
 internal object EnumHashCode : BetterIntrinsicBase() {
@@ -254,7 +241,6 @@ internal object ArrayConstructor : BetterIntrinsicBase() {
             }
         }
 
-        environment.callStack.dropFrame()
         environment.callStack.pushState(arrayValue.toPrimitiveStateArray(irFunction.parentAsClass.defaultType))
     }
 }

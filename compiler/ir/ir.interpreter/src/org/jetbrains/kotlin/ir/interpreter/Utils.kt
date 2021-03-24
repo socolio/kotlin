@@ -20,6 +20,7 @@ import org.jetbrains.kotlin.ir.interpreter.stack.Variable
 import org.jetbrains.kotlin.ir.interpreter.state.*
 import org.jetbrains.kotlin.ir.interpreter.proxy.Proxy
 import org.jetbrains.kotlin.ir.interpreter.proxy.wrap
+import org.jetbrains.kotlin.ir.interpreter.state.reflection.KTypeState
 import org.jetbrains.kotlin.ir.symbols.*
 import org.jetbrains.kotlin.ir.types.*
 import org.jetbrains.kotlin.ir.types.impl.buildSimpleType
@@ -248,6 +249,7 @@ inline fun withExceptionHandler(block: () -> Any?): Any? {
 internal inline fun withExceptionHandler(environment: IrInterpreterEnvironment, block: () -> Unit) {
     try {
         block()
+        // check if during proxy interpretation was an exception
         val possibleException = environment.callStack.peekState() as? ExceptionState
         if (possibleException != null) environment.callStack.dropFrameUntilTryCatch()
     } catch (e: Throwable) {
@@ -261,6 +263,29 @@ internal fun Throwable.handleUserException(environment: IrInterpreterEnvironment
         ?: environment.irBuiltIns.throwableClass.owner
     environment.callStack.pushState(ExceptionState(this, irExceptionClass, environment.callStack.getStackTrace()))
     environment.callStack.dropFrameUntilTryCatch()
+}
+
+/**
+ * This method is analog of `checkcast` jvm bytecode operation. Throw exception whenever actual type is not a subtype of expected.
+ */
+internal fun IrFunction?.checkCast(environment: IrInterpreterEnvironment): Boolean {
+    this ?: return true
+    val actualType = this.returnType
+    if (actualType.classifierOrNull !is IrTypeParameterSymbol) return true
+
+    // TODO expectedType can be missing for functions called as proxy
+    val expectedType = (environment.callStack.getVariable(this.symbol).state as? KTypeState)?.irType ?: return true
+    if (expectedType.classifierOrFail is IrTypeParameterSymbol) return true
+
+    val actualState = environment.callStack.peekState() ?: return true
+    if (actualState is Primitive<*> && actualState.value == null) return true // this is handled in checkNullability
+
+    if (!actualState.isSubtypeOf(expectedType)) {
+        val convertibleClassName = environment.callStack.popState().irClass.fqNameWhenAvailable
+        ClassCastException("$convertibleClassName cannot be cast to ${expectedType.render()}").handleUserException(environment)
+        return false
+    }
+    return true
 }
 
 internal fun IrFunction.getArgsForMethodInvocation(interpreter: IrInterpreter, methodType: MethodType, args: List<State>): List<Any?> {
