@@ -7,14 +7,12 @@ package org.jetbrains.kotlin.ir.interpreter.intrinsics
 
 import org.jetbrains.kotlin.ir.interpreter.*
 import org.jetbrains.kotlin.ir.interpreter.stack.Stack
-import org.jetbrains.kotlin.ir.interpreter.stack.Variable
 import org.jetbrains.kotlin.ir.interpreter.state.*
 import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrEnumEntry
 import org.jetbrains.kotlin.ir.declarations.IrFunction
 import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
-import org.jetbrains.kotlin.ir.expressions.IrConst
 import org.jetbrains.kotlin.ir.expressions.impl.IrCallImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrConstImpl
 import org.jetbrains.kotlin.ir.interpreter.exceptions.throwAsUserException
@@ -38,6 +36,13 @@ internal sealed class BetterIntrinsicBase {
     abstract fun equalTo(irFunction: IrFunction): Boolean
     abstract fun evaluate(irFunction: IrFunction, environment: IrInterpreterEnvironment)
     abstract fun unwind(irFunction: IrFunction, environment: IrInterpreterEnvironment): List<Instruction>
+
+    fun customEvaluateInstruction(irFunction: IrFunction, environment: IrInterpreterEnvironment): CustomInstruction {
+        return CustomInstruction {
+            evaluate(irFunction, environment)
+            environment.callStack.dropFrameAndCopyResult()
+        }
+    }
 }
 
 internal object EmptyArray : BetterIntrinsicBase() {
@@ -47,7 +52,7 @@ internal object EmptyArray : BetterIntrinsicBase() {
     }
 
     override fun unwind(irFunction: IrFunction, environment: IrInterpreterEnvironment): List<Instruction> {
-        return listOf(IntrinsicInstruction(irFunction))
+        return listOf(customEvaluateInstruction(irFunction, environment))
     }
 
     override fun evaluate(irFunction: IrFunction, environment: IrInterpreterEnvironment) {
@@ -63,7 +68,7 @@ internal object ArrayOf : BetterIntrinsicBase() {
     }
 
     override fun unwind(irFunction: IrFunction, environment: IrInterpreterEnvironment): List<Instruction> {
-        return listOf(IntrinsicInstruction(irFunction))
+        return listOf(customEvaluateInstruction(irFunction, environment))
     }
 
     override fun evaluate(irFunction: IrFunction, environment: IrInterpreterEnvironment) {
@@ -80,7 +85,7 @@ internal object ArrayOfNulls : BetterIntrinsicBase() {
     }
 
     override fun unwind(irFunction: IrFunction, environment: IrInterpreterEnvironment): List<Instruction> {
-        return listOf(IntrinsicInstruction(irFunction))
+        return listOf(customEvaluateInstruction(irFunction, environment))
     }
 
     override fun evaluate(irFunction: IrFunction, environment: IrInterpreterEnvironment) {
@@ -115,13 +120,13 @@ internal object EnumValues : BetterIntrinsicBase() {
         val enumClass = getEnumClass(irFunction, environment)
         val enumEntries = enumClass.declarations.filterIsInstance<IrEnumEntry>()
 
-        return listOf(IntrinsicInstruction(irFunction)) + enumEntries.reversed().map { CompoundInstruction(it) }
+        return listOf(customEvaluateInstruction(irFunction, environment)) + enumEntries.reversed().map { CompoundInstruction(it) }
     }
 
     override fun evaluate(irFunction: IrFunction, environment: IrInterpreterEnvironment) {
         val enumClass = getEnumClass(irFunction, environment)
 
-        val enumEntries = enumClass.declarations.filterIsInstance<IrEnumEntry>().map { environment.callStack.popState() as Common }
+        val enumEntries = enumClass.declarations.filterIsInstance<IrEnumEntry>().map { environment.mapOfEnums[it.symbol] }
         environment.callStack.pushState(enumEntries.toTypedArray().toState(irFunction.returnType))
     }
 }
@@ -142,18 +147,25 @@ internal object EnumValueOf : BetterIntrinsicBase() {
         }
     }
 
-    override fun unwind(irFunction: IrFunction, environment: IrInterpreterEnvironment): List<Instruction> {
+    private fun getEnumEntryByName(irFunction: IrFunction, environment: IrInterpreterEnvironment): IrEnumEntry? {
         val enumClass = getEnumClass(irFunction, environment)
         val enumEntryName = environment.callStack.getVariable(irFunction.valueParameters.first().symbol).state.asString()
         val enumEntry = enumClass.declarations.filterIsInstance<IrEnumEntry>().singleOrNull { it.name.asString() == enumEntryName }
         if (enumEntry == null) {
             IllegalArgumentException("No enum constant ${enumClass.fqNameWhenAvailable}.$enumEntryName").handleUserException(environment)
-            return emptyList()
         }
-        return listOf(IntrinsicInstruction(irFunction), CompoundInstruction(enumEntry))
+        return enumEntry
     }
 
-    override fun evaluate(irFunction: IrFunction, environment: IrInterpreterEnvironment) {}
+    override fun unwind(irFunction: IrFunction, environment: IrInterpreterEnvironment): List<Instruction> {
+        val enumEntry = getEnumEntryByName(irFunction, environment) ?: return emptyList()
+        return listOf(customEvaluateInstruction(irFunction, environment), CompoundInstruction(enumEntry))
+    }
+
+    override fun evaluate(irFunction: IrFunction, environment: IrInterpreterEnvironment) {
+        val enumEntry = getEnumEntryByName(irFunction, environment)!!
+        environment.callStack.pushState(environment.mapOfEnums[enumEntry.symbol]!!)
+    }
 }
 
 internal object EnumHashCode : BetterIntrinsicBase() {
@@ -163,11 +175,11 @@ internal object EnumHashCode : BetterIntrinsicBase() {
     }
 
     override fun unwind(irFunction: IrFunction, environment: IrInterpreterEnvironment): List<Instruction> {
-        return listOf(IntrinsicInstruction(irFunction))
+        return listOf(CustomInstruction { evaluate(irFunction, environment).apply { environment.callStack.dropFrameAndCopyResult() } })
     }
 
     override fun evaluate(irFunction: IrFunction, environment: IrInterpreterEnvironment) {
-        val hashCode = 0//environment.callStack.getAll().single().state.hashCode() //TODO
+        val hashCode = environment.callStack.getVariable(irFunction.dispatchReceiverParameter!!.symbol).state.hashCode()
         environment.callStack.pushState(hashCode.toState(irFunction.returnType))
     }
 }
@@ -179,7 +191,7 @@ internal object JsPrimitives : BetterIntrinsicBase() {
     }
 
     override fun unwind(irFunction: IrFunction, environment: IrInterpreterEnvironment): List<Instruction> {
-        return listOf(IntrinsicInstruction(irFunction))
+        return listOf(customEvaluateInstruction(irFunction, environment))
     }
 
     override fun evaluate(irFunction: IrFunction, environment: IrInterpreterEnvironment) {
@@ -204,14 +216,15 @@ internal object ArrayConstructor : BetterIntrinsicBase() {
     }
 
     override fun unwind(irFunction: IrFunction, environment: IrInterpreterEnvironment): List<Instruction> {
-        if (irFunction.valueParameters.size == 1) return listOf(IntrinsicInstruction(irFunction))
-        val instructions = mutableListOf<Instruction>(IntrinsicInstruction(irFunction))
+        if (irFunction.valueParameters.size == 1) return listOf(customEvaluateInstruction(irFunction, environment))
+        val instructions = mutableListOf<Instruction>(customEvaluateInstruction(irFunction, environment))
 
         val sizeDescriptor = irFunction.valueParameters[0].symbol
         val size = environment.callStack.getVariable(sizeDescriptor).state.asInt()
 
         val initDescriptor = irFunction.valueParameters[1].symbol
         val initLambda = environment.callStack.getVariable(initDescriptor).state as KFunctionState
+        //environment.callStack.loadUpValues(initLambda)
         val function = initLambda.irFunction as IrSimpleFunction
         val index = initLambda.irFunction.valueParameters.single()
         for (i in 0 until size) {

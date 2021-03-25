@@ -6,9 +6,7 @@
 package org.jetbrains.kotlin.ir.interpreter.stack
 
 import org.jetbrains.kotlin.ir.IrElement
-import org.jetbrains.kotlin.ir.declarations.IrFile
-import org.jetbrains.kotlin.ir.declarations.IrFunction
-import org.jetbrains.kotlin.ir.declarations.name
+import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.expressions.*
 import org.jetbrains.kotlin.ir.interpreter.CompoundInstruction
 import org.jetbrains.kotlin.ir.interpreter.Instruction
@@ -161,15 +159,23 @@ internal class CallStack {
     fun getVariable(symbol: IrSymbol): Variable = getCurrentFrame().getVariable(symbol)
 
     fun getStackTrace(): List<String> {
-        return frames.map { it.toString() }
+        return frames.map { it.toString() }.filter { it != CallStackFrameContainer.NOT_DEFINED }
+    }
+
+    fun getFileAndPositionInfo(): String {
+        return frames[frames.size - 2].getFileAndPositionInfo()
     }
 }
 
 private class CallStackFrameContainer(frame: SubFrame, val irFile: IrFile? = null) {
-    var lineNumber: Int = -1
     private val innerStack = mutableListOf(frame)
+    private var currentInstruction: Instruction? = null
     val currentSubFrameOwner: IrElement
         get() = getCurrentFrame().owner
+
+    companion object {
+        const val NOT_DEFINED = "Not defined"
+    }
 
     private fun getCurrentFrame() = innerStack.last()
 
@@ -196,7 +202,7 @@ private class CallStackFrameContainer(frame: SubFrame, val irFile: IrFile? = nul
     }
 
     fun popInstruction(): Instruction {
-        return getCurrentFrame().popInstruction()
+        return getCurrentFrame().popInstruction().apply { currentInstruction = this }
     }
 
     fun dropInstructions() = getCurrentFrame().dropInstructions()
@@ -217,14 +223,31 @@ private class CallStackFrameContainer(frame: SubFrame, val irFile: IrFile? = nul
             ?: throw InterpreterError("$symbol not found") // TODO better message
     }
 
-    // fun getAll() = innerStack.flatMap { it.getAll() }
+    fun getAll(): List<Variable> = innerStack.flatMap { it.getAll() }
+
+    private fun getLineNumberForCurrentInstruction(): String {
+        irFile ?: return ""
+        val frameOwner = currentInstruction?.element
+        return when {
+            frameOwner is IrExpression || (frameOwner is IrDeclaration && frameOwner.origin == IrDeclarationOrigin.DEFINED) ->
+                ":${irFile.fileEntry.getLineNumber(frameOwner.startOffset) + 1}"
+            else -> ""
+        }
+    }
+
+    fun getFileAndPositionInfo(): String {
+        irFile ?: return NOT_DEFINED
+        val lineNum = getLineNumberForCurrentInstruction()
+        return "${irFile.name}$lineNum"
+    }
 
     override fun toString(): String {
-        irFile ?: return "Not defined"
+        irFile ?: return NOT_DEFINED
         val fileNameCapitalized = irFile.name.replace(".kt", "Kt").capitalize()
-        val lineNum = getCurrentFrame().getLineNumberForCurrentInstruction(irFile)
-        val entryPoint = innerStack.map { it.owner }.firstOrNull { it is IrFunction } as? IrFunction
-        return "at $fileNameCapitalized.${entryPoint?.fqNameWhenAvailable ?: "<clinit>"}(${irFile.name}:$lineNum)"
+        val entryPoint = innerStack.firstOrNull { it.owner is IrFunction }?.owner as? IrFunction
+        val lineNum = getLineNumberForCurrentInstruction()
+
+        return "at $fileNameCapitalized.${entryPoint?.fqNameWhenAvailable ?: "<clinit>"}(${irFile.name}$lineNum)"
     }
 }
 
@@ -261,4 +284,5 @@ internal class SubFrame(private val instructions: MutableList<Instruction>, val 
     }
 
     fun getVariable(symbol: IrSymbol): Variable? = memory.firstOrNull { it.symbol == symbol }
+    fun getAll(): List<Variable> = memory
 }
