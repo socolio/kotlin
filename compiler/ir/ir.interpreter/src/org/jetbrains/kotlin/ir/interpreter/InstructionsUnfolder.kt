@@ -10,6 +10,7 @@ import org.jetbrains.kotlin.ir.IrStatement
 import org.jetbrains.kotlin.ir.UNDEFINED_OFFSET
 import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.expressions.*
+import org.jetbrains.kotlin.ir.expressions.impl.IrCallImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrConstImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrConstructorCallImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrGetObjectValueImpl
@@ -60,7 +61,7 @@ internal fun unfoldInstruction(element: IrElement?, environment: IrInterpreterEn
         is IrTry -> unfoldTry(element, callStack)
         is IrCatch -> unfoldCatch(element, callStack)
         is IrThrow -> unfoldThrow(element, callStack)
-        is IrStringConcatenation -> unfoldStringConcatenation(element, callStack)
+        is IrStringConcatenation -> unfoldStringConcatenation(element, environment)
         is IrFunctionExpression -> callStack.addInstruction(SimpleInstruction(element))
         is IrFunctionReference -> unfoldFunctionReference(element, callStack)
         is IrPropertyReference -> unfoldPropertyReference(element, callStack)
@@ -184,7 +185,6 @@ private fun unfoldField(field: IrField, callStack: CallStack) {
 }
 
 private fun unfoldBody(body: IrBody, callStack: CallStack) {
-    // TODO new sub frame???
     unfoldStatements(body.statements.reversed(), callStack)
 }
 
@@ -362,13 +362,28 @@ private fun unfoldThrow(expression: IrThrow, callStack: CallStack) {
     callStack.addInstruction(CompoundInstruction(expression.value))
 }
 
-private fun unfoldStringConcatenation(expression: IrStringConcatenation, callStack: CallStack) {
+private fun unfoldStringConcatenation(expression: IrStringConcatenation, environment: IrInterpreterEnvironment) {
+    val callStack = environment.callStack
     callStack.newSubFrame(expression, listOf())
     callStack.addInstruction(SimpleInstruction(expression))
+
+    // this callback is used to check the need for an explicit toString call
+    val explicitToStringCheck = fun() {
+        when (val state = callStack.peekState()) {
+            is Common -> {
+                callStack.popState()
+                val toStringFun = state.getToStringFunction()
+                val receiver = toStringFun.dispatchReceiverParameter!!
+                val toStringCall = IrCallImpl.fromSymbolOwner(0, 0, environment.irBuiltIns.stringType, toStringFun.symbol)
+                toStringCall.dispatchReceiver = IrConstImpl.constNull(0, 0, receiver.type) // just stub receiver
+
+                callStack.newSubFrame(toStringCall, listOf(SimpleInstruction(toStringCall)))
+                callStack.pushState(state)
+            }
+        }
+    }
     expression.arguments.reversed().forEach {
-        // here we use intermediate instruction to check if interpretation returned Common state as result
-        // in this case we must call toString function explicitly
-        callStack.addInstruction(SimpleInstruction(expression))
+        callStack.addInstruction(CustomInstruction(explicitToStringCheck))
         callStack.addInstruction(CompoundInstruction(it))
     }
 }

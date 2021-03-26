@@ -139,7 +139,6 @@ internal class CallStack {
     }
 
     fun hasNoInstructions() = frames.isEmpty() || (frames.size == 1 && frames.first().hasNoInstructions())
-    fun hasNoInstructionsInCurrentSubFrame() = getCurrentFrame().hasNoInstructionsInCurrentSubFrame()
 
     fun addInstruction(instruction: Instruction) {
         getCurrentFrame().addInstruction(instruction)

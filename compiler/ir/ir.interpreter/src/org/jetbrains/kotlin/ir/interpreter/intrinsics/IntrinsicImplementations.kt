@@ -170,7 +170,7 @@ internal object EnumHashCode : IntrinsicBase() {
     }
 
     override fun unwind(irFunction: IrFunction, environment: IrInterpreterEnvironment): List<Instruction> {
-        return listOf(CustomInstruction { evaluate(irFunction, environment).apply { environment.callStack.dropFrameAndCopyResult() } })
+        return listOf(customEvaluateInstruction(irFunction, environment))
     }
 
     override fun evaluate(irFunction: IrFunction, environment: IrInterpreterEnvironment) {

@@ -91,6 +91,10 @@ class IrInterpreter private constructor(
         }
     }
 
+    private fun getUnitState(): State {
+        return environment.mapOfObjects.getOrPut(irBuiltIns.unitClass) { Common(irBuiltIns.unitClass.owner) }
+    }
+
     private fun Instruction.handle() {
         when (this) {
             is CompoundInstruction -> unfoldInstruction(this.element, environment)
@@ -122,11 +126,12 @@ class IrInterpreter private constructor(
             callStack.newFrame(this@proxyInterpret, listOf(CompoundInstruction(this@proxyInterpret)))
             valueArguments.forEach { callStack.addVariable(it) }
 
-            while (!callStack.hasNoInstructions()) { // TODO execute only instructions of this function
+            while (!callStack.hasNoInstructions()) {
                 callStack.popInstruction().handle()
                 incrementAndCheckCommands()
             }
 
+            if (callStack.peekState() == null) callStack.pushState(getUnitState()) // TODO maybe move this logic to body/block
             callStack.popState().wrap(this@IrInterpreter, expectedResultClass).apply { callStack.dropFrame() }
         }
     }
@@ -276,20 +281,21 @@ class IrInterpreter private constructor(
             (dispatchReceiver as? Complex)?.superWrapperClass?.irClass -> dispatchReceiver.superWrapperClass
             else -> dispatchReceiver
         }
-        val args = listOfNotNull(dispatchReceiver, extensionReceiver) + valueArguments
 
-        callStack.dropSubFrame() // TODO check that data stack is empty (for current subframe)
+        callStack.dropSubFrame()
         callStack.newFrame(irFunction, listOf(SimpleInstruction(irFunction)))
         // TODO: if using KTypeState then it's class must be corresponding
         // `call.type` is used in check cast and emptyArray
         callStack.addVariable(Variable(irFunction.symbol, KTypeState(call.type, irBuiltIns.anyClass.owner)))
 
         // 3. store arguments in memory
-        irFunction.getDispatchReceiver()?.let { dispatchReceiver?.let { receiver -> callStack.addVariable(Variable(it, receiver)) } }
-        irFunction.getExtensionReceiver()?.let { callStack.addVariable(Variable(it, extensionReceiver ?: valueArguments.first())) }
+        val args = mutableListOf<Variable>()
+        irFunction.getDispatchReceiver()?.let { dispatchReceiver?.let { receiver -> args.add(Variable(it, receiver)) } }
+        irFunction.getExtensionReceiver()?.let { args.add(Variable(it, extensionReceiver ?: valueArguments.first())) }
         // `shift` is used when extension receiver is actually a parameter in lambda
         val shift = if (irFunction.extensionReceiverParameter != null && extensionReceiver == null) 1 else 0
-        irFunction.valueParameters.forEachIndexed { i, param -> callStack.addVariable(Variable(param.symbol, valueArguments[i + shift])) }
+        irFunction.valueParameters.forEachIndexed { i, param -> args.add(Variable(param.symbol, valueArguments[i + shift])) }
+        args.forEach { callStack.addVariable(it) }
 
         // 4. store reified type parameters
         irFunction.typeParameters.filter { it.isReified }
@@ -305,17 +311,18 @@ class IrInterpreter private constructor(
             generateSequence(dispatchReceiver.outerClass) { (it.state as? Complex)?.outerClass }.forEach { callStack.addVariable(it) }
         }
 
+        val states = args.map { it.state }
         // inline only methods are not presented in lookup table, so must be interpreted instead of execution
         val isInlineOnly = irFunction.hasAnnotation(FqName("kotlin.internal.InlineOnly"))
         when {
-            dispatchReceiver is Wrapper && !isInlineOnly -> dispatchReceiver.getMethod(irFunction).invokeMethod(irFunction, args)
-            irFunction.hasAnnotation(evaluateIntrinsicAnnotation) -> Wrapper.getStaticMethod(irFunction).invokeMethod(irFunction, args)
+            dispatchReceiver is Wrapper && !isInlineOnly -> dispatchReceiver.getMethod(irFunction).invokeMethod(irFunction, states)
+            irFunction.hasAnnotation(evaluateIntrinsicAnnotation) -> Wrapper.getStaticMethod(irFunction).invokeMethod(irFunction, states)
             dispatchReceiver is KFunctionState && call.symbol.owner.name.asString() == "invoke" -> callStack.addInstruction(CompoundInstruction(irFunction))
-            dispatchReceiver is ReflectionState -> Wrapper.getReflectionMethod(irFunction).invokeMethod(irFunction, args)
-            dispatchReceiver is Primitive<*> -> calculateBuiltIns(irFunction, args) // 'is Primitive' check for js char, js long and get field for primitives
+            dispatchReceiver is ReflectionState -> Wrapper.getReflectionMethod(irFunction).invokeMethod(irFunction, states)
+            dispatchReceiver is Primitive<*> -> calculateBuiltIns(irFunction, states) // 'is Primitive' check for js char, js long and get field for primitives
             irFunction.body is IrSyntheticBody -> handleIntrinsicMethods(irFunction)
             irFunction.body == null ->
-                irFunction.trySubstituteFunctionBody() ?: irFunction.tryCalculateLazyConst() ?: calculateBuiltIns(irFunction, args)
+                irFunction.trySubstituteFunctionBody() ?: irFunction.tryCalculateLazyConst() ?: calculateBuiltIns(irFunction, states)
             else -> callStack.addInstruction(CompoundInstruction(irFunction))
         }
     }
@@ -519,7 +526,6 @@ class IrInterpreter private constructor(
         }
     }
 
-    @Suppress("UNUSED_PARAMETER")
     private fun interpretGetObjectValue(expression: IrGetObjectValue) {
         callStack.dropSubFrame()
 
@@ -562,7 +568,7 @@ class IrInterpreter private constructor(
         when (expression.operator) {
             IrTypeOperator.IMPLICIT_COERCION_TO_UNIT -> {
                 callStack.popState()
-                //getOrCreateObjectValue(irBuiltIns.unitClass.owner).check { return it } // TODO
+                callStack.pushState(getUnitState())
             }
             IrTypeOperator.CAST, IrTypeOperator.IMPLICIT_CAST -> {
                 if (!isErased && !callStack.peekState()!!.isSubtypeOf(typeOperand)) {
@@ -672,33 +678,17 @@ class IrInterpreter private constructor(
     }
 
     private fun interpretStringConcatenation(expression: IrStringConcatenation) {
-        if (callStack.hasNoInstructionsInCurrentSubFrame()) {
-            val result = mutableListOf<String>()
-            repeat(expression.arguments.size) {
-                result += when (val state = callStack.popState()) {
-                    is Primitive<*> -> state.value.toString()
-                    is Wrapper -> state.value.toString()
-                    else -> state.toString()
-                }
-            }
-
-            callStack.dropSubFrame()
-            callStack.pushState(result.reversed().joinToString(separator = "").toState(expression.type))
-            return
-        }
-
-        when (val state = callStack.peekState()) {
-            is Common -> {
-                callStack.popState()
-                val toStringFun = state.getToStringFunction()
-                val receiver = toStringFun.dispatchReceiverParameter!!
-                val toStringCall = IrCallImpl.fromSymbolOwner(0, 0, irBuiltIns.stringType, toStringFun.symbol)
-                toStringCall.dispatchReceiver = IrConstImpl.constNull(0, 0, receiver.type) // just stub receiver
-
-                callStack.newSubFrame(toStringCall, listOf(SimpleInstruction(toStringCall)))
-                callStack.pushState(state)
+        val result = mutableListOf<String>()
+        repeat(expression.arguments.size) {
+            result += when (val state = callStack.popState()) {
+                is Primitive<*> -> state.value.toString()
+                is Wrapper -> state.value.toString()
+                else -> state.toString()
             }
         }
+
+        callStack.dropSubFrame()
+        callStack.pushState(result.reversed().joinToString(separator = "").toState(expression.type))
     }
 
     private fun interpretFunctionExpression(expression: IrFunctionExpression) {
