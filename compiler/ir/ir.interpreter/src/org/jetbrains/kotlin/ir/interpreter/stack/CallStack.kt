@@ -69,12 +69,11 @@ internal class CallStack {
 
     fun returnFromFrameWithResult(irReturn: IrReturn) {
         val result = popState()
-        var frame = getCurrentFrame()
-        var frameOwner = frame.currentSubFrameOwner
-        while (frameOwner != irReturn.returnTargetSymbol.owner || !frame.hasNoFrames()) {
-            frame = getCurrentFrame()
-            frameOwner = frame.currentSubFrameOwner
+        var frameOwner = getCurrentFrame().currentSubFrameOwner
+        while (frameOwner != irReturn.returnTargetSymbol.owner) {
+            frameOwner = getCurrentFrame().currentSubFrameOwner
             dropSubFrame()
+            if (getCurrentFrame().hasNoFrames() && frameOwner != irReturn.returnTargetSymbol.owner) dropFrame()
             if (frameOwner is IrTry) {
                 pushState(result)
                 addInstruction(SimpleInstruction(irReturn))
@@ -82,10 +81,10 @@ internal class CallStack {
                 return
             }
         }
-        when { // check that last frame is not a function itself; use case for proxyInterpret
-            frames.size != 1 -> dropFrame()
-            else -> newSubFrame(irReturn, emptyList()) // just stub frame
-        }
+
+        dropFrame()
+        // check that last frame is not a function itself; use case for proxyInterpret
+        if (frames.size == 0) newFrame(irReturn, emptyList()) // just stub frame
         pushState(result)
     }
 
@@ -93,12 +92,17 @@ internal class CallStack {
         val isBreak = breakContinue is IrBreak
         var frameOwner = getCurrentFrame().currentSubFrameOwner
         while (frameOwner != breakContinue.loop) {
-            getCurrentFrame().removeSubFrameWithoutDataPropagation()
             if (frameOwner is IrTry) {
                 addInstruction(CompoundInstruction(breakContinue))
                 addInstruction(CompoundInstruction(frameOwner.finallyExpression))
                 return
+            } else if (frameOwner is IrCatch) {
+                val finallyInstruction = getCurrentFrame().dropInstructions()!!
+                addInstruction(CompoundInstruction(breakContinue))
+                addInstruction(finallyInstruction)
+                return
             }
+            getCurrentFrame().removeSubFrameWithoutDataPropagation()
             frameOwner = getCurrentFrame().currentSubFrameOwner
         }
 
@@ -124,7 +128,6 @@ internal class CallStack {
                     newSubFrame(frameOwner, listOf())
                     pushState(exception)
                     addInstruction(SimpleInstruction(frameOwner))
-//                    frameOwner.finallyExpression?.let { addInstruction(CompoundInstruction(it)) }
                     frameOwner.catches.reversed().forEach { addInstruction(CompoundInstruction(it)) }
                     return
                 } else if (frameOwner is IrCatch) {
@@ -213,7 +216,6 @@ private class CallStackFrameContainer(frame: SubFrame, val irFile: IrFile? = nul
     fun hasNoFrames() = innerStack.isEmpty()
     fun hasOneFrameLeft() = innerStack.size == 1
     fun hasNoInstructions() = hasNoFrames() || (innerStack.size == 1 && innerStack.first().isEmpty())
-    fun hasNoInstructionsInCurrentSubFrame() = getCurrentFrame().isEmpty()
 
     fun addInstruction(instruction: Instruction) {
         getCurrentFrame().pushInstruction(instruction)
@@ -274,11 +276,6 @@ internal class SubFrame(private val instructions: MutableList<Instruction>, val 
     private val dataStack = DataStack()
 
     fun isEmpty() = instructions.isEmpty()
-
-    fun getLineNumberForCurrentInstruction(irFile: IrFile): Int {
-        val element = instructions.firstOrNull()?.element ?: owner
-        return irFile.fileEntry.getLineNumber(element.startOffset) + 1
-    }
 
     fun pushInstruction(instruction: Instruction) {
         instructions.add(0, instruction)

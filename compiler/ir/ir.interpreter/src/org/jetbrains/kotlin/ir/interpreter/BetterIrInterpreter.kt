@@ -568,7 +568,7 @@ class IrInterpreter private constructor(
         when (expression.operator) {
             IrTypeOperator.IMPLICIT_COERCION_TO_UNIT -> {
                 callStack.popState()
-                callStack.pushState(getUnitState())
+                // callStack.pushState(getUnitState()) TODO find real use cases for this
             }
             IrTypeOperator.CAST, IrTypeOperator.IMPLICIT_CAST -> {
                 if (!isErased && !callStack.peekState()!!.isSubtypeOf(typeOperand)) {
