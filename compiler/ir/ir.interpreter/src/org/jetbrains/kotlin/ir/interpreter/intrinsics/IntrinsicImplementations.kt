@@ -224,7 +224,7 @@ internal object ArrayConstructor : BetterIntrinsicBase() {
 
         val initDescriptor = irFunction.valueParameters[1].symbol
         val initLambda = environment.callStack.getVariable(initDescriptor).state as KFunctionState
-        //environment.callStack.loadUpValues(initLambda)
+        environment.callStack.loadUpValues(initLambda)
         val function = initLambda.irFunction as IrSimpleFunction
         val index = initLambda.irFunction.valueParameters.single()
         for (i in 0 until size) {
@@ -254,19 +254,23 @@ internal object ArrayConstructor : BetterIntrinsicBase() {
             }
         }
 
-        environment.callStack.pushState(arrayValue.toPrimitiveStateArray(irFunction.parentAsClass.defaultType))
+        val type = environment.callStack.getVariable(irFunction.symbol).state as KTypeState
+        environment.callStack.pushState(arrayValue.toPrimitiveStateArray(type.irType))
     }
 }
 
-internal object SourceLocation : IntrinsicBase() {
+internal object SourceLocation : BetterIntrinsicBase() {
     override fun equalTo(irFunction: IrFunction): Boolean {
         val fqName = irFunction.fqNameWhenAvailable.toString()
         return fqName == "kotlin.experimental.sourceLocation" || fqName == "kotlin.experimental.SourceLocationKt.sourceLocation"
     }
 
-    override fun evaluate(irFunction: IrFunction, stack: Stack, interpret: IrElement.() -> ExecutionResult): ExecutionResult {
-        stack.pushReturnValue(stack.getCurrentStackInfo().toState(irFunction.returnType))
-        return Next
+    override fun unwind(irFunction: IrFunction, environment: IrInterpreterEnvironment): List<Instruction> {
+        return listOf(customEvaluateInstruction(irFunction, environment))
+    }
+
+    override fun evaluate(irFunction: IrFunction, environment: IrInterpreterEnvironment) {
+        environment.callStack.pushState(environment.callStack.getFileAndPositionInfo().toState(irFunction.returnType))
     }
 }
 

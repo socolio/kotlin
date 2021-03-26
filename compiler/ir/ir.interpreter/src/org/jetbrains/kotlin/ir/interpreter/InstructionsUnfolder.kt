@@ -21,7 +21,6 @@ import org.jetbrains.kotlin.ir.interpreter.state.*
 import org.jetbrains.kotlin.ir.interpreter.state.Common
 import org.jetbrains.kotlin.ir.interpreter.state.Complex
 import org.jetbrains.kotlin.ir.interpreter.state.ExceptionState
-import org.jetbrains.kotlin.ir.interpreter.state.Wrapper
 import org.jetbrains.kotlin.ir.interpreter.state.isSubtypeOf
 import org.jetbrains.kotlin.ir.types.classOrNull
 import org.jetbrains.kotlin.ir.types.classifierOrNull
@@ -80,7 +79,6 @@ private fun unfoldFunction(function: IrSimpleFunction, callStack: CallStack) {
     //if (stack.getStackCount() >= MAX_STACK) StackOverflowError().throwAsUserException()
     // SimpleInstruction with function is added in IrCall
     // It will serve as endpoint for all possible calls, there we drop frame and copy result to new one
-    if (function.body is IrSyntheticBody) return // TODO maybe remove
     function.body?.let { callStack.addInstruction(CompoundInstruction(it)) }
         ?: throw InterpreterError("Ir function must be with body")
 }
@@ -196,8 +194,8 @@ private fun unfoldBlock(block: IrBlock, callStack: CallStack) {
 private fun unfoldStatements(statements: List<IrStatement>, callStack: CallStack) {
     for (statement in statements) {
         when (statement) {
-            is IrClass -> if (statement.isLocal) Next else TODO("Only local classes are supported")
-            is IrFunction -> if (statement.isLocal) Next else TODO("Only local functions are supported")
+            is IrClass -> if (!statement.isLocal) TODO("Only local classes are supported")
+            is IrFunction -> if (!statement.isLocal) TODO("Only local functions are supported")
             else -> callStack.addInstruction(CompoundInstruction(statement))
         }
     }

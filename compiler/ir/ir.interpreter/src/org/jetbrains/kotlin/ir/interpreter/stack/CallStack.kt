@@ -13,6 +13,7 @@ import org.jetbrains.kotlin.ir.interpreter.Instruction
 import org.jetbrains.kotlin.ir.interpreter.SimpleInstruction
 import org.jetbrains.kotlin.ir.interpreter.exceptions.InterpreterError
 import org.jetbrains.kotlin.ir.interpreter.state.State
+import org.jetbrains.kotlin.ir.interpreter.state.StateWithClosure
 import org.jetbrains.kotlin.ir.symbols.IrSymbol
 import org.jetbrains.kotlin.ir.util.fileOrNull
 import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
@@ -157,6 +158,18 @@ internal class CallStack {
     }
 
     fun getVariable(symbol: IrSymbol): Variable = getCurrentFrame().getVariable(symbol)
+
+    fun storeUpValues(state: StateWithClosure) {
+        state.upValues.addAll(getCurrentFrame().getAll().toMutableList())
+    }
+
+    fun loadUpValues(state: StateWithClosure) {
+        state.upValues.forEach { addVariable(it) }
+    }
+
+    fun copyUpValuesFromPreviousFrame() {
+        frames[frames.size - 2].getAll().forEach { addVariable(it) }
+    }
 
     fun getStackTrace(): List<String> {
         return frames.map { it.toString() }.filter { it != CallStackFrameContainer.NOT_DEFINED }

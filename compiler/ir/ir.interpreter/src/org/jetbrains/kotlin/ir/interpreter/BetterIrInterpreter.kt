@@ -255,7 +255,7 @@ class IrInterpreter private constructor(
             val method = irFunction.getCapitalizedFileName() + "." + irFunction.fqNameWhenAvailable
             val parameter = valueParameter.name
             IllegalArgumentException("Parameter specified as non-null is null: method $method, parameter $parameter")
-        }
+        } ?: return
 
         //must add value argument in current stack because it can be used later as default argument
         callStack.addVariable(Variable(valueParameter.symbol, state))
@@ -263,10 +263,12 @@ class IrInterpreter private constructor(
     }
 
     private fun interpretCall(call: IrCall) {
+        // 1. load evaluated arguments from stack
         val valueArguments = call.symbol.owner.valueParameters.map { callStack.popState() }.reversed()
         val extensionReceiver = call.extensionReceiver?.let { callStack.popState() }
         var dispatchReceiver = call.dispatchReceiver?.let { callStack.popState() }
 
+        // 2. get correct function for interpretation
         val irFunction = dispatchReceiver?.getIrFunctionByIrCall(call) ?: call.symbol.owner
         dispatchReceiver = when (irFunction.parent) {
             (dispatchReceiver as? Complex)?.superWrapperClass?.irClass -> dispatchReceiver.superWrapperClass
@@ -280,19 +282,23 @@ class IrInterpreter private constructor(
         // `call.type` is used in check cast and emptyArray
         callStack.addVariable(Variable(irFunction.symbol, KTypeState(call.type, irBuiltIns.anyClass.owner)))
 
+        // 3. store arguments in memory
         irFunction.getDispatchReceiver()?.let { dispatchReceiver?.let { receiver -> callStack.addVariable(Variable(it, receiver)) } }
         irFunction.getExtensionReceiver()?.let { callStack.addVariable(Variable(it, extensionReceiver ?: valueArguments.first())) }
         // `shift` is used when extension receiver is actually a parameter in lambda
         val shift = if (irFunction.extensionReceiverParameter != null && extensionReceiver == null) 1 else 0
         irFunction.valueParameters.forEachIndexed { i, param -> callStack.addVariable(Variable(param.symbol, valueArguments[i + shift])) }
 
+        // 4. store reified type parameters
         irFunction.typeParameters.filter { it.isReified }
             .forEach { callStack.addVariable(Variable(it.symbol, KTypeState(call.getTypeArgument(it.index)!!, irBuiltIns.anyClass.owner))) }
 
-//        if (dispatchReceiver?.irClass?.isLocal == true || irFunction.isLocal) {
-//            valueArguments.addAll(dispatchReceiver.extractNonLocalDeclarations())
-//        }
-//
+        // 5. load up values onto stack
+        if (dispatchReceiver == null && extensionReceiver == null && irFunction.isLocal) callStack.copyUpValuesFromPreviousFrame()
+        if (dispatchReceiver is StateWithClosure) callStack.loadUpValues(dispatchReceiver)
+        if (extensionReceiver is StateWithClosure) callStack.loadUpValues(extensionReceiver)
+
+        // 6. load outer class object
 //        if (dispatchReceiver is Complex && irFunction.parentClassOrNull?.isInner == true) {
 //            generateSequence(dispatchReceiver.outerClass) { (it.state as? Complex)?.outerClass }.forEach { valueArguments.add(it) }
 //        }
@@ -362,13 +368,13 @@ class IrInterpreter private constructor(
         val constructor = constructorCall.symbol.owner
         val irClass = constructor.parentAsClass
         val objectVar = callStack.getVariable(constructorCall.getThisReceiver())
-//        if (irClass.isLocal) environment.storeUpValues(irClass)
+        if (irClass.isLocal) callStack.storeUpValues(objectVar.state as StateWithClosure)
 
         callStack.dropSubFrame() // TODO check that data stack is empty
         callStack.newFrame(constructor, listOf(SimpleInstruction(constructor)))
         callStack.addVariable(objectVar)
         constructor.valueParameters.forEachIndexed { i, param -> callStack.addVariable(Variable(param.symbol, valueArguments[i])) }
-//        if (irClass.isLocal) environment.loadUpValues(irClass)
+        if (irClass.isLocal) callStack.loadUpValues(objectVar.state as StateWithClosure)
 //
 //        if (irClass.isInner) {
 //            constructorCall.dispatchReceiver!!.interpret().check { return it }
@@ -591,7 +597,7 @@ class IrInterpreter private constructor(
                 is BooleanArray -> value.toList()
                 is Array<*> -> value.toList()
                 else -> listOf(value)
-            }
+            }.reversed()
         }
 
         // TODO use wrap???
@@ -690,7 +696,7 @@ class IrInterpreter private constructor(
 
     private fun interpretFunctionExpression(expression: IrFunctionExpression) {
         val function = KFunctionState(expression.function, expression.type.classOrNull!!.owner)
-        //TODO //if (expression.function.isLocal) function.fields.addAll(stack.getAll()) // TODO save only necessary declarations
+        if (expression.function.isLocal) callStack.storeUpValues(function)
         callStack.pushState(function)
     }
 }

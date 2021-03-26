@@ -80,10 +80,11 @@ internal fun State.checkNullability(
  */
 internal fun State.checkNullability(
     irType: IrType?, environment: IrInterpreterEnvironment, exceptionToThrow: () -> Throwable = { NullPointerException() }
-): State {
+): State? {
     if (irType !is IrSimpleType) return this
     if (this.isNull() && !irType.isNullable()) {
         exceptionToThrow().handleUserException(environment)
+        return null
     }
     return this
 }

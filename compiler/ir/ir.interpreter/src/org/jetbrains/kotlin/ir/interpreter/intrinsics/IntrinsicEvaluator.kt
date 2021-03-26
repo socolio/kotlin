@@ -24,7 +24,7 @@ internal class IntrinsicEvaluator {
 //            EnumHashCode.equalTo(irFunction) -> EnumHashCode.evaluate(irFunction, stack, interpret)
 //            JsPrimitives.equalTo(irFunction) -> JsPrimitives.evaluate(irFunction, stack, interpret)
 //            ArrayConstructor.equalTo(irFunction) -> ArrayConstructor.evaluate(irFunction, stack, interpret)
-            SourceLocation.equalTo(irFunction) -> SourceLocation.evaluate(irFunction, stack, interpret)
+//            SourceLocation.equalTo(irFunction) -> SourceLocation.evaluate(irFunction, stack, interpret)
             AssertIntrinsic.equalTo(irFunction) -> AssertIntrinsic.evaluate(irFunction, stack, interpret)
             else -> throw InterpreterMethodNotFoundError("Method ${irFunction.name} hasn't implemented")
         }
@@ -42,7 +42,7 @@ internal object BetterIntrinsicEvaluator {
             EnumHashCode.equalTo(irFunction) -> EnumHashCode.unwind(irFunction, environment)
             JsPrimitives.equalTo(irFunction) -> JsPrimitives.unwind(irFunction, environment)
             ArrayConstructor.equalTo(irFunction) -> ArrayConstructor.unwind(irFunction, environment)
-//            SourceLocation.equalTo(irFunction) -> SourceLocation.unwind(irFunction, environment)
+            SourceLocation.equalTo(irFunction) -> SourceLocation.unwind(irFunction, environment)
 //            AssertIntrinsic.equalTo(irFunction) -> AssertIntrinsic.unwind(irFunction, environment)
             else -> throw InterpreterMethodNotFoundError("Method ${irFunction.name} hasn't implemented")
         }
@@ -58,7 +58,7 @@ internal object BetterIntrinsicEvaluator {
             EnumHashCode.equalTo(irFunction) -> EnumHashCode.evaluate(irFunction, environment)
             JsPrimitives.equalTo(irFunction) -> JsPrimitives.evaluate(irFunction, environment)
             ArrayConstructor.equalTo(irFunction) -> ArrayConstructor.evaluate(irFunction, environment)
-//            SourceLocation.equalTo(irFunction) -> SourceLocation.evaluate(irFunction, environment)
+            SourceLocation.equalTo(irFunction) -> SourceLocation.evaluate(irFunction, environment)
 //            AssertIntrinsic.equalTo(irFunction) -> AssertIntrinsic.evaluate(irFunction, environment)
             else -> throw InterpreterMethodNotFoundError("Method ${irFunction.name} hasn't implemented")
         }
