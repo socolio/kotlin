@@ -29,11 +29,6 @@ import org.jetbrains.kotlin.types.Variance
 
 internal sealed class IntrinsicBase {
     abstract fun equalTo(irFunction: IrFunction): Boolean
-    abstract fun evaluate(irFunction: IrFunction, stack: Stack, interpret: IrElement.() -> ExecutionResult): ExecutionResult
-}
-
-internal sealed class BetterIntrinsicBase {
-    abstract fun equalTo(irFunction: IrFunction): Boolean
     abstract fun evaluate(irFunction: IrFunction, environment: IrInterpreterEnvironment)
     abstract fun unwind(irFunction: IrFunction, environment: IrInterpreterEnvironment): List<Instruction>
 
@@ -45,7 +40,7 @@ internal sealed class BetterIntrinsicBase {
     }
 }
 
-internal object EmptyArray : BetterIntrinsicBase() {
+internal object EmptyArray : IntrinsicBase() {
     override fun equalTo(irFunction: IrFunction): Boolean {
         val fqName = irFunction.fqNameWhenAvailable.toString()
         return fqName in setOf("kotlin.emptyArray", "kotlin.ArrayIntrinsicsKt.emptyArray")
@@ -61,7 +56,7 @@ internal object EmptyArray : BetterIntrinsicBase() {
     }
 }
 
-internal object ArrayOf : BetterIntrinsicBase() {
+internal object ArrayOf : IntrinsicBase() {
     override fun equalTo(irFunction: IrFunction): Boolean {
         val fqName = irFunction.fqNameWhenAvailable.toString()
         return fqName == "kotlin.arrayOf"
@@ -78,7 +73,7 @@ internal object ArrayOf : BetterIntrinsicBase() {
     }
 }
 
-internal object ArrayOfNulls : BetterIntrinsicBase() {
+internal object ArrayOfNulls : IntrinsicBase() {
     override fun equalTo(irFunction: IrFunction): Boolean {
         val fqName = irFunction.fqNameWhenAvailable.toString()
         return fqName == "kotlin.arrayOfNulls"
@@ -100,7 +95,7 @@ internal object ArrayOfNulls : BetterIntrinsicBase() {
     }
 }
 
-internal object EnumValues : BetterIntrinsicBase() {
+internal object EnumValues : IntrinsicBase() {
     override fun equalTo(irFunction: IrFunction): Boolean {
         val fqName = irFunction.fqNameWhenAvailable.toString()
         return (fqName == "kotlin.enumValues" || fqName.endsWith(".values")) && irFunction.valueParameters.isEmpty()
@@ -131,7 +126,7 @@ internal object EnumValues : BetterIntrinsicBase() {
     }
 }
 
-internal object EnumValueOf : BetterIntrinsicBase() {
+internal object EnumValueOf : IntrinsicBase() {
     override fun equalTo(irFunction: IrFunction): Boolean {
         val fqName = irFunction.fqNameWhenAvailable.toString()
         return (fqName == "kotlin.enumValueOf" || fqName.endsWith(".valueOf")) && irFunction.valueParameters.size == 1
@@ -168,7 +163,7 @@ internal object EnumValueOf : BetterIntrinsicBase() {
     }
 }
 
-internal object EnumHashCode : BetterIntrinsicBase() {
+internal object EnumHashCode : IntrinsicBase() {
     override fun equalTo(irFunction: IrFunction): Boolean {
         val fqName = irFunction.fqNameWhenAvailable.toString()
         return fqName == "kotlin.Enum.hashCode"
@@ -184,7 +179,7 @@ internal object EnumHashCode : BetterIntrinsicBase() {
     }
 }
 
-internal object JsPrimitives : BetterIntrinsicBase() {
+internal object JsPrimitives : IntrinsicBase() {
     override fun equalTo(irFunction: IrFunction): Boolean {
         val fqName = irFunction.fqNameWhenAvailable.toString()
         return fqName == "kotlin.Long.<init>" || fqName == "kotlin.Char.<init>"
@@ -209,7 +204,7 @@ internal object JsPrimitives : BetterIntrinsicBase() {
     }
 }
 
-internal object ArrayConstructor : BetterIntrinsicBase() {
+internal object ArrayConstructor : IntrinsicBase() {
     override fun equalTo(irFunction: IrFunction): Boolean {
         val fqName = irFunction.fqNameWhenAvailable.toString()
         return fqName.matches("kotlin\\.(Byte|Char|Short|Int|Long|Float|Double|Boolean|)Array\\.<init>".toRegex())
@@ -259,7 +254,7 @@ internal object ArrayConstructor : BetterIntrinsicBase() {
     }
 }
 
-internal object SourceLocation : BetterIntrinsicBase() {
+internal object SourceLocation : IntrinsicBase() {
     override fun equalTo(irFunction: IrFunction): Boolean {
         val fqName = irFunction.fqNameWhenAvailable.toString()
         return fqName == "kotlin.experimental.sourceLocation" || fqName == "kotlin.experimental.SourceLocationKt.sourceLocation"
@@ -280,18 +275,22 @@ internal object AssertIntrinsic : IntrinsicBase() {
         return fqName == "kotlin.PreconditionsKt.assert"
     }
 
-    override fun evaluate(irFunction: IrFunction, stack: Stack, interpret: IrElement.() -> ExecutionResult): ExecutionResult {
-        val value = stack.getVariable(irFunction.valueParameters.first().symbol).state.asBoolean()
-        if (value) return Next
+    override fun unwind(irFunction: IrFunction, environment: IrInterpreterEnvironment): List<Instruction> {
+        if (irFunction.valueParameters.size == 1) return listOf(customEvaluateInstruction(irFunction, environment))
+
+        val messageLambda = environment.callStack.getVariable(irFunction.valueParameters.last().symbol).state as KFunctionState
+        val function = messageLambda.irFunction as IrSimpleFunction
+        val call = IrCallImpl.fromSymbolOwner(0, 0, function.returnType, function.symbol)
+
+        return listOf(customEvaluateInstruction(irFunction, environment), CompoundInstruction(call))
+    }
+
+    override fun evaluate(irFunction: IrFunction, environment: IrInterpreterEnvironment) {
+        val value = environment.callStack.getVariable(irFunction.valueParameters.first().symbol).state.asBoolean()
+        if (value) return
         when (irFunction.valueParameters.size) {
             1 -> AssertionError("Assertion failed").throwAsUserException()
-            2 -> {
-                val messageLambda = stack.getVariable(irFunction.valueParameters.last().symbol).state as KFunctionState
-                stack.newFrame(asSubFrame = true) { messageLambda.irFunction.body!!.interpret() }
-                    .check(ReturnLabel.RETURN) { return it }
-                AssertionError(stack.popReturnValue().asString()).throwAsUserException()
-            }
+            2 -> AssertionError(environment.callStack.popState().asString()).throwAsUserException()
         }
-        return Next
     }
 }

@@ -18,10 +18,6 @@ import org.jetbrains.kotlin.ir.interpreter.exceptions.InterpreterError
 import org.jetbrains.kotlin.ir.interpreter.stack.CallStack
 import org.jetbrains.kotlin.ir.interpreter.stack.Variable
 import org.jetbrains.kotlin.ir.interpreter.state.*
-import org.jetbrains.kotlin.ir.interpreter.state.Common
-import org.jetbrains.kotlin.ir.interpreter.state.Complex
-import org.jetbrains.kotlin.ir.interpreter.state.ExceptionState
-import org.jetbrains.kotlin.ir.interpreter.state.isSubtypeOf
 import org.jetbrains.kotlin.ir.types.classOrNull
 import org.jetbrains.kotlin.ir.types.classifierOrNull
 import org.jetbrains.kotlin.ir.util.*
@@ -66,9 +62,9 @@ internal fun unfoldInstruction(element: IrElement?, environment: IrInterpreterEn
         is IrThrow -> unfoldThrow(element, callStack)
         is IrStringConcatenation -> unfoldStringConcatenation(element, callStack)
         is IrFunctionExpression -> callStack.addInstruction(SimpleInstruction(element))
-//        is IrFunctionReference -> unfoldFunctionReference(element, callStack)
-//        is IrPropertyReference -> unfoldPropertyReference(element, callStack)
-//        is IrClassReference -> unfoldClassReference(element, callStack)
+        is IrFunctionReference -> unfoldFunctionReference(element, callStack)
+        is IrPropertyReference -> unfoldPropertyReference(element, callStack)
+        is IrClassReference -> unfoldClassReference(element, callStack)
         is IrComposite -> unfoldComposite(element, callStack)
 
         else -> TODO("${element.javaClass} not supported")
@@ -324,7 +320,6 @@ private fun unfoldWhen(element: IrWhen, callStack: CallStack) {
 
 private fun unfoldContinue(element: IrContinue, callStack: CallStack) {
     callStack.unrollInstructionsForBreakContinue(element)
-    callStack.addInstruction(CompoundInstruction(element.loop))
 }
 
 private fun unfoldBreak(element: IrBreak, callStack: CallStack) {
@@ -379,4 +374,28 @@ private fun unfoldComposite(element: IrComposite, callStack: CallStack) {
             .forEach { callStack.addInstruction(CompoundInstruction(it)) } // is null for body of do while loop
         else -> TODO("${element.origin} not implemented")
     }
+}
+
+private fun unfoldFunctionReference(reference: IrFunctionReference, callStack: CallStack) {
+    val function = reference.symbol.owner
+    callStack.newSubFrame(reference, listOf())
+    callStack.addInstruction(SimpleInstruction(reference))
+
+    reference.extensionReceiver?.let {
+        callStack.addInstruction(SimpleInstruction(function.extensionReceiverParameter!!))
+        callStack.addInstruction(CompoundInstruction(it))
+    }
+    reference.dispatchReceiver?.let {
+        callStack.addInstruction(SimpleInstruction(function.dispatchReceiverParameter!!))
+        callStack.addInstruction(CompoundInstruction(it))
+    }
+}
+
+private fun unfoldPropertyReference(propertyReference: IrPropertyReference, callStack: CallStack) {
+    callStack.addInstruction(SimpleInstruction(propertyReference))
+    callStack.addInstruction(CompoundInstruction(propertyReference.dispatchReceiver))
+}
+
+private fun unfoldClassReference(classReference: IrClassReference, callStack: CallStack) {
+    callStack.addInstruction(SimpleInstruction(classReference))
 }

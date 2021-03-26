@@ -93,15 +93,19 @@ internal class CallStack {
         val isBreak = breakContinue is IrBreak
         var frameOwner = getCurrentFrame().currentSubFrameOwner
         while (frameOwner != breakContinue.loop) {
-            frameOwner = getCurrentFrame().currentSubFrameOwner
+            getCurrentFrame().removeSubFrameWithoutDataPropagation()
             if (frameOwner is IrTry) {
                 addInstruction(CompoundInstruction(breakContinue))
                 addInstruction(CompoundInstruction(frameOwner.finallyExpression))
                 return
             }
-            getCurrentFrame().removeSubFrameWithoutDataPropagation()
+            frameOwner = getCurrentFrame().currentSubFrameOwner
         }
-        if (isBreak) getCurrentFrame().removeSubFrameWithoutDataPropagation()
+
+        when {
+            isBreak -> getCurrentFrame().removeSubFrameWithoutDataPropagation()
+            else -> addInstruction(CompoundInstruction(breakContinue.loop))
+        }
     }
 
     fun dropFrameUntilTryCatch() {
@@ -142,7 +146,6 @@ internal class CallStack {
     }
 
     fun popInstruction(): Instruction {
-        //while (getCurrentFrame().isEmpty()) dropFrame()
         return getCurrentFrame().popInstruction()
     }
 
@@ -160,6 +163,7 @@ internal class CallStack {
     fun getVariable(symbol: IrSymbol): Variable = getCurrentFrame().getVariable(symbol)
 
     fun storeUpValues(state: StateWithClosure) {
+        // TODO save only necessary declarations
         state.upValues.addAll(getCurrentFrame().getAll().toMutableList())
     }
 

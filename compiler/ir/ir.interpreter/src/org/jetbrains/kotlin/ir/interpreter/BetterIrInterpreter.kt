@@ -18,7 +18,7 @@ import org.jetbrains.kotlin.ir.interpreter.builtins.interpretTernaryFunction
 import org.jetbrains.kotlin.ir.interpreter.builtins.interpretUnaryFunction
 import org.jetbrains.kotlin.ir.interpreter.exceptions.InterpreterError
 import org.jetbrains.kotlin.ir.interpreter.exceptions.InterpreterTimeOutError
-import org.jetbrains.kotlin.ir.interpreter.intrinsics.BetterIntrinsicEvaluator
+import org.jetbrains.kotlin.ir.interpreter.intrinsics.IntrinsicEvaluator
 import org.jetbrains.kotlin.ir.interpreter.proxy.CommonProxy.Companion.asProxy
 import org.jetbrains.kotlin.ir.interpreter.proxy.Proxy
 import org.jetbrains.kotlin.ir.interpreter.proxy.wrap
@@ -31,9 +31,13 @@ import org.jetbrains.kotlin.ir.interpreter.state.Primitive
 import org.jetbrains.kotlin.ir.interpreter.state.State
 import org.jetbrains.kotlin.ir.interpreter.state.asBoolean
 import org.jetbrains.kotlin.ir.interpreter.state.isSubtypeOf
+import org.jetbrains.kotlin.ir.interpreter.state.reflection.*
+import org.jetbrains.kotlin.ir.interpreter.state.reflection.KClassState
 import org.jetbrains.kotlin.ir.interpreter.state.reflection.KFunctionState
+import org.jetbrains.kotlin.ir.interpreter.state.reflection.KPropertyState
 import org.jetbrains.kotlin.ir.interpreter.state.reflection.KTypeState
 import org.jetbrains.kotlin.ir.interpreter.state.reflection.ReflectionState
+import org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol
 import org.jetbrains.kotlin.ir.types.*
 import org.jetbrains.kotlin.ir.types.impl.originalKotlinType
 import org.jetbrains.kotlin.ir.util.*
@@ -160,9 +164,9 @@ class IrInterpreter private constructor(
             is IrThrow -> interpretThrow(element)
             is IrStringConcatenation -> interpretStringConcatenation(element)
             is IrFunctionExpression -> interpretFunctionExpression(element)
-//            is IrFunctionReference -> interpretFunctionReference(element)
-//            is IrPropertyReference -> interpretPropertyReference(element)
-//            is IrClassReference -> interpretClassReference(element)
+            is IrFunctionReference -> interpretFunctionReference(element)
+            is IrPropertyReference -> interpretPropertyReference(element)
+            is IrClassReference -> interpretClassReference(element)
             else -> TODO("${element.javaClass} not supported for interpretation")
         }
     }
@@ -184,7 +188,7 @@ class IrInterpreter private constructor(
     }
 
     private fun handleIntrinsicMethods(irFunction: IrFunction) {
-        BetterIntrinsicEvaluator.unwindInstructions(irFunction, environment).forEach { callStack.addInstruction(it) }
+        IntrinsicEvaluator.unwindInstructions(irFunction, environment).forEach { callStack.addInstruction(it) }
     }
 
     private fun calculateBuiltIns(irFunction: IrFunction, args: List<State>) {
@@ -698,5 +702,37 @@ class IrInterpreter private constructor(
         val function = KFunctionState(expression.function, expression.type.classOrNull!!.owner)
         if (expression.function.isLocal) callStack.storeUpValues(function)
         callStack.pushState(function)
+    }
+
+    private fun interpretFunctionReference(reference: IrFunctionReference) {
+        val function = KFunctionState(reference)
+        val irFunction = function.irFunction
+
+        val extensionReceiver = reference.extensionReceiver?.let { callStack.popState() }
+        val dispatchReceiver = reference.dispatchReceiver?.let { callStack.popState() }
+
+        callStack.dropSubFrame()
+        irFunction.getDispatchReceiver()?.let { dispatchReceiver?.let { receiver -> function.fields.add(Variable(it, receiver)) } }
+        irFunction.getExtensionReceiver()?.let { extensionReceiver?.let { receiver -> function.fields.add(Variable(it, receiver)) } }
+
+        if (irFunction.isLocal) callStack.storeUpValues(function)
+        callStack.pushState(function)
+    }
+
+    private fun interpretPropertyReference(propertyReference: IrPropertyReference) {
+        val dispatchReceiver = propertyReference.dispatchReceiver?.let { callStack.popState() }
+        // it is impossible to get KProperty2 through ::, so extension receiver is always null
+        val propertyState = KPropertyState(propertyReference, dispatchReceiver)
+        callStack.pushState(propertyState)
+    }
+
+    private fun interpretClassReference(classReference: IrClassReference) {
+        when (classReference.symbol) {
+            is IrTypeParameterSymbol -> { // reified
+                val kTypeState = callStack.getVariable(classReference.symbol).state as KTypeState
+                callStack.pushState(KClassState(kTypeState.irType.classOrNull!!.owner, classReference.type.classOrNull!!.owner))
+            }
+            else -> callStack.pushState(KClassState(classReference))
+        }
     }
 }
