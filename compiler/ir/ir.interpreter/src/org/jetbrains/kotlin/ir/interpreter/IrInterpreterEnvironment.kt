@@ -25,4 +25,9 @@ internal class IrInterpreterEnvironment(val irBuiltIns: IrBuiltIns, val callStac
     fun copyWithNewCallStack(): IrInterpreterEnvironment {
         return IrInterpreterEnvironment(this)
     }
+
+    companion object {
+        const val MAX_STACK = 50_000
+        const val MAX_COMMANDS = 1_000_000
+    }
 }

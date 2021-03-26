@@ -45,8 +45,6 @@ import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 import java.lang.invoke.MethodHandle
 
-private const val MAX_COMMANDS = 1_000_000
-
 internal interface Instruction {
     val element: IrElement?
 }
@@ -74,7 +72,7 @@ class IrInterpreter private constructor(
 
     private fun incrementAndCheckCommands() {
         commandCount++
-        if (commandCount >= MAX_COMMANDS) InterpreterTimeOutError().handleUserException(environment)
+        if (commandCount >= IrInterpreterEnvironment.MAX_COMMANDS) InterpreterTimeOutError().handleUserException(environment)
     }
 
     private fun Any?.getType(defaultType: IrType): IrType {
@@ -303,9 +301,9 @@ class IrInterpreter private constructor(
         if (extensionReceiver is StateWithClosure) callStack.loadUpValues(extensionReceiver)
 
         // 6. load outer class object
-//        if (dispatchReceiver is Complex && irFunction.parentClassOrNull?.isInner == true) {
-//            generateSequence(dispatchReceiver.outerClass) { (it.state as? Complex)?.outerClass }.forEach { valueArguments.add(it) }
-//        }
+        if (dispatchReceiver is Complex && irFunction.parentClassOrNull?.isInner == true) {
+            generateSequence(dispatchReceiver.outerClass) { (it.state as? Complex)?.outerClass }.forEach { callStack.addVariable(it) }
+        }
 
         // inline only methods are not presented in lookup table, so must be interpreted instead of execution
         val isInlineOnly = irFunction.hasAnnotation(FqName("kotlin.internal.InlineOnly"))
@@ -325,6 +323,7 @@ class IrInterpreter private constructor(
     private fun IrFunction.trySubstituteFunctionBody(): IrElement? {
         val signature = this.symbol.signature ?: return null
         this.body = bodyMap[signature] ?: return null
+        callStack.addInstruction(CompoundInstruction(this))
         return body
     }
 
@@ -373,29 +372,31 @@ class IrInterpreter private constructor(
         val irClass = constructor.parentAsClass
         val objectVar = callStack.getVariable(constructorCall.getThisReceiver())
         if (irClass.isLocal) callStack.storeUpValues(objectVar.state as StateWithClosure)
+        val outerClass = if (irClass.isInner) callStack.popState() else null
 
         callStack.dropSubFrame() // TODO check that data stack is empty
         callStack.newFrame(constructor, listOf(SimpleInstruction(constructor)))
         callStack.addVariable(objectVar)
         constructor.valueParameters.forEachIndexed { i, param -> callStack.addVariable(Variable(param.symbol, valueArguments[i])) }
         if (irClass.isLocal) callStack.loadUpValues(objectVar.state as StateWithClosure)
-//
-//        if (irClass.isInner) {
-//            constructorCall.dispatchReceiver!!.interpret().check { return it }
-//            state.outerClass = Variable(irClass.parentAsClass.thisReceiver!!.symbol, stack.popReturnValue())
-//            // used in case when inner class has inner super class
-//            valueArguments.add(Variable(owner.dispatchReceiverParameter!!.symbol, state.outerClass!!.state))
-//            // used to get information from outer class
-//            valueArguments.add(state.outerClass!!)
-//        }
 
-        val superReceiver = when (val irStatement = constructor.body!!.statements[0]) {
+        if (outerClass != null) {
+            val outerClassVar = Variable(irClass.parentAsClass.thisReceiver!!.symbol, outerClass)
+            (objectVar.state as Complex).outerClass = outerClassVar
+            // used in case when inner class has inner super class
+            callStack.addVariable(Variable(constructor.dispatchReceiverParameter!!.symbol, outerClass))
+            // used to get information from outer class
+            callStack.addVariable(outerClassVar)
+        }
+
+        val superReceiver = when (val irStatement = constructor.body?.statements?.get(0)) {
+            null -> null // for jvm
             is IrTypeOperatorCall -> (irStatement.argument as IrFunctionAccessExpression).getThisReceiver() // for enums
             is IrFunctionAccessExpression -> irStatement.getThisReceiver()
             is IrBlock -> (irStatement.statements.last() as IrFunctionAccessExpression).getThisReceiver()
             else -> TODO("${irStatement::class.java} is not supported as first statement in constructor call")
         }
-        callStack.addVariable(Variable(superReceiver, objectVar.state))
+        superReceiver?.let { callStack.addVariable(Variable(it, objectVar.state)) }
 
         when {
             irClass.hasAnnotation(evaluateIntrinsicAnnotation) || irClass.fqNameWhenAvailable!!.startsWith(Name.identifier("java")) -> {
@@ -447,7 +448,9 @@ class IrInterpreter private constructor(
     }
 
     private fun interpretReturn(expression: IrReturn) {
-        if ((expression.returnTargetSymbol.owner as? IrFunction).checkCast(environment)) {
+        val function = expression.returnTargetSymbol.owner as? IrFunction
+        function?.tryResetFunctionBody()
+        if (function.checkCast(environment)) {
             callStack.returnFromFrameWithResult(expression)
         }
     }

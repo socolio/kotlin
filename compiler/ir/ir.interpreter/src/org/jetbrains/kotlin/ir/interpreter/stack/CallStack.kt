@@ -182,6 +182,8 @@ internal class CallStack {
     fun getFileAndPositionInfo(): String {
         return frames[frames.size - 2].getFileAndPositionInfo()
     }
+
+    fun getStackCount(): Int = frames.size
 }
 
 private class CallStackFrameContainer(frame: SubFrame, val irFile: IrFile? = null) {

@@ -28,7 +28,7 @@ internal fun unfoldInstruction(element: IrElement?, environment: IrInterpreterEn
     val callStack = environment.callStack
     when (element) {
         null -> return
-        is IrSimpleFunction -> unfoldFunction(element, callStack)
+        is IrSimpleFunction -> unfoldFunction(element, environment)
         is IrConstructor -> unfoldConstructor(element, callStack)
         is IrCall -> unfoldCall(element, callStack)
         is IrConstructorCall -> unfoldConstructorCall(element, callStack)
@@ -71,11 +71,12 @@ internal fun unfoldInstruction(element: IrElement?, environment: IrInterpreterEn
     }
 }
 
-private fun unfoldFunction(function: IrSimpleFunction, callStack: CallStack) {
-    //if (stack.getStackCount() >= MAX_STACK) StackOverflowError().throwAsUserException()
+private fun unfoldFunction(function: IrSimpleFunction, environment: IrInterpreterEnvironment) {
+    if (environment.callStack.getStackCount() >= IrInterpreterEnvironment.MAX_STACK)
+        return StackOverflowError().handleUserException(environment)
     // SimpleInstruction with function is added in IrCall
     // It will serve as endpoint for all possible calls, there we drop frame and copy result to new one
-    function.body?.let { callStack.addInstruction(CompoundInstruction(it)) }
+    function.body?.let { environment.callStack.addInstruction(CompoundInstruction(it)) }
         ?: throw InterpreterError("Ir function must be with body")
 }
 
@@ -104,11 +105,17 @@ private fun unfoldCall(call: IrCall, callStack: CallStack) {
 }
 
 private fun unfoldConstructorCall(constructorCall: IrFunctionAccessExpression, callStack: CallStack) {
+    val constructor = constructorCall.symbol.owner
     callStack.newSubFrame(constructorCall, listOf()) // used to store value arguments, in case then they are use as default args
     // this variable is used to create object once
-    callStack.addVariable(Variable(constructorCall.getThisReceiver(), Common(constructorCall.symbol.owner.parentAsClass)))
+    callStack.addVariable(Variable(constructorCall.getThisReceiver(), Common(constructor.parentAsClass)))
     callStack.addInstruction(SimpleInstruction(constructorCall))
     unfoldValueParameters(constructorCall, callStack)
+
+    constructorCall.dispatchReceiver?.let {
+        callStack.addInstruction(SimpleInstruction(constructor.dispatchReceiverParameter!!))
+        callStack.addInstruction(CompoundInstruction(it))
+    }
 }
 
 private fun unfoldEnumConstructorCall(enumConstructorCall: IrEnumConstructorCall, callStack: CallStack) {
