@@ -69,16 +69,29 @@ internal class CallStack {
 
     fun returnFromFrameWithResult(irReturn: IrReturn) {
         val result = popState()
-        var frameOwner = getCurrentFrame().currentSubFrameOwner
+        var frameOwner = getCurrentFrameOwner()
         while (frameOwner != irReturn.returnTargetSymbol.owner) {
-            frameOwner = getCurrentFrame().currentSubFrameOwner
-            dropSubFrame()
-            if (getCurrentFrame().hasNoFrames() && frameOwner != irReturn.returnTargetSymbol.owner) dropFrame()
-            if (frameOwner is IrTry) {
-                pushState(result)
-                addInstruction(SimpleInstruction(irReturn))
-                addInstruction(CompoundInstruction(frameOwner.finallyExpression))
-                return
+            when (frameOwner) {
+                is IrTry -> {
+                    dropSubFrame()
+                    pushState(result)
+                    addInstruction(SimpleInstruction(irReturn))
+                    addInstruction(CompoundInstruction(frameOwner.finallyExpression))
+                    return
+                }
+                is IrCatch -> {
+                    val tryBlock = getCurrentFrame().dropInstructions()!!.element as IrTry// last instruction in `catch` block is `try`
+                    dropSubFrame()
+                    pushState(result)
+                    addInstruction(SimpleInstruction(irReturn))
+                    addInstruction(CompoundInstruction(tryBlock.finallyExpression))
+                    return
+                }
+                else -> {
+                    dropSubFrame()
+                    if (getCurrentFrame().hasNoFrames() && frameOwner != irReturn.returnTargetSymbol.owner) dropFrame()
+                    frameOwner = getCurrentFrameOwner()
+                }
             }
         }
 
@@ -88,57 +101,64 @@ internal class CallStack {
         pushState(result)
     }
 
-    fun unrollInstructionsForBreakContinue(breakContinue: IrBreakContinue) {
-        val isBreak = breakContinue is IrBreak
-        var frameOwner = getCurrentFrame().currentSubFrameOwner
-        while (frameOwner != breakContinue.loop) {
-            if (frameOwner is IrTry) {
-                addInstruction(CompoundInstruction(breakContinue))
-                addInstruction(CompoundInstruction(frameOwner.finallyExpression))
-                return
-            } else if (frameOwner is IrCatch) {
-                val finallyInstruction = getCurrentFrame().dropInstructions()!!
-                addInstruction(CompoundInstruction(breakContinue))
-                addInstruction(finallyInstruction)
-                return
+    fun unrollInstructionsForBreakContinue(breakOrContinue: IrBreakContinue) {
+        var frameOwner = getCurrentFrameOwner()
+        while (frameOwner != breakOrContinue.loop) {
+            when (frameOwner) {
+                is IrTry -> {
+                    addInstruction(CompoundInstruction(breakOrContinue))
+                    addInstruction(SimpleInstruction(frameOwner))
+                    return
+                }
+                is IrCatch -> {
+                    val tryInstruction = getCurrentFrame().dropInstructions()!! // last instruction in `catch` block is `try`
+                    addInstruction(CompoundInstruction(breakOrContinue))
+                    addInstruction(tryInstruction)
+                    return
+                }
+                else -> {
+                    getCurrentFrame().removeSubFrameWithoutDataPropagation()
+                    frameOwner = getCurrentFrameOwner()
+                }
             }
-            getCurrentFrame().removeSubFrameWithoutDataPropagation()
-            frameOwner = getCurrentFrame().currentSubFrameOwner
         }
 
-        when {
-            isBreak -> getCurrentFrame().removeSubFrameWithoutDataPropagation()
-            else -> addInstruction(CompoundInstruction(breakContinue.loop))
+        when (breakOrContinue) {
+            is IrBreak -> getCurrentFrame().removeSubFrameWithoutDataPropagation() // drop loop
+            else -> addInstruction(CompoundInstruction(breakOrContinue.loop))
         }
     }
 
     fun dropFrameUntilTryCatch() {
         val exception = popState()
+        var frameOwner = getCurrentFrameOwner()
         while (frames.isNotEmpty()) {
             val frame = getCurrentFrame()
             while (!frame.hasNoFrames()) {
-                if (frames.size == 1 && frame.hasOneFrameLeft()) {
-                    pushState(exception)
-                    frame.dropInstructions()
-                    return
+                frameOwner = frame.currentSubFrameOwner
+                when (frameOwner) {
+                    is IrTry -> {
+                        dropSubFrame()  // drop all instructions that left
+                        newSubFrame(frameOwner, listOf())
+                        addInstruction(SimpleInstruction(frameOwner)) // to evaluate finally at the end
+                        frameOwner.catches.reversed().forEach { addInstruction(CompoundInstruction(it)) }
+                        pushState(exception)
+                        return
+                    }
+                    is IrCatch -> {
+                        // in case of exception in catch, drop everything except of last `try` instruction
+                        addInstruction(frame.dropInstructions()!!)
+                        pushState(exception)
+                        return
+                    }
+                    else -> frame.removeSubFrameWithoutDataPropagation()
                 }
-                val frameOwner = frame.currentSubFrameOwner
-                if (frameOwner is IrTry) {
-                    dropSubFrame()
-                    newSubFrame(frameOwner, listOf())
-                    pushState(exception)
-                    addInstruction(SimpleInstruction(frameOwner))
-                    frameOwner.catches.reversed().forEach { addInstruction(CompoundInstruction(it)) }
-                    return
-                } else if (frameOwner is IrCatch) {
-                    addInstruction(frame.dropInstructions()!!)
-                    pushState(exception)
-                    return
-                }
-                dropSubFrame() // TODO drop with info loosing
             }
             dropFrame()
         }
+
+        if (frames.size == 0) newFrame(frameOwner, emptyList()) // just stub frame
+        pushState(exception)
     }
 
     fun hasNoInstructions() = frames.isEmpty() || (frames.size == 1 && frames.first().hasNoInstructions())
@@ -214,7 +234,6 @@ private class CallStackFrameContainer(frame: SubFrame, val irFile: IrFile? = nul
     }
 
     fun hasNoFrames() = innerStack.isEmpty()
-    fun hasOneFrameLeft() = innerStack.size == 1
     fun hasNoInstructions() = hasNoFrames() || (innerStack.size == 1 && innerStack.first().isEmpty())
 
     fun addInstruction(instruction: Instruction) {

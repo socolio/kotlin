@@ -5,17 +5,14 @@
 
 package org.jetbrains.kotlin.ir.interpreter.intrinsics
 
-import org.jetbrains.kotlin.ir.interpreter.*
-import org.jetbrains.kotlin.ir.interpreter.stack.Stack
-import org.jetbrains.kotlin.ir.interpreter.state.*
-import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrEnumEntry
 import org.jetbrains.kotlin.ir.declarations.IrFunction
 import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
 import org.jetbrains.kotlin.ir.expressions.impl.IrCallImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrConstImpl
-import org.jetbrains.kotlin.ir.interpreter.exceptions.throwAsUserException
+import org.jetbrains.kotlin.ir.interpreter.*
+import org.jetbrains.kotlin.ir.interpreter.state.*
 import org.jetbrains.kotlin.ir.interpreter.state.reflection.KFunctionState
 import org.jetbrains.kotlin.ir.interpreter.state.reflection.KTypeState
 import org.jetbrains.kotlin.ir.types.IrSimpleType
@@ -24,7 +21,7 @@ import org.jetbrains.kotlin.ir.types.impl.buildSimpleType
 import org.jetbrains.kotlin.ir.types.impl.makeTypeProjection
 import org.jetbrains.kotlin.ir.types.isArray
 import org.jetbrains.kotlin.ir.types.isCharArray
-import org.jetbrains.kotlin.ir.util.*
+import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
 import org.jetbrains.kotlin.types.Variance
 
 internal sealed class IntrinsicBase {
@@ -289,8 +286,8 @@ internal object AssertIntrinsic : IntrinsicBase() {
         val value = environment.callStack.getVariable(irFunction.valueParameters.first().symbol).state.asBoolean()
         if (value) return
         when (irFunction.valueParameters.size) {
-            1 -> AssertionError("Assertion failed").throwAsUserException()
-            2 -> AssertionError(environment.callStack.popState().asString()).throwAsUserException()
+            1 -> AssertionError("Assertion failed").handleUserException(environment)
+            2 -> AssertionError(environment.callStack.popState().asString()).handleUserException(environment)
         }
     }
 }

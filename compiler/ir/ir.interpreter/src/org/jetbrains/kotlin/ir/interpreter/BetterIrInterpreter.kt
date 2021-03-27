@@ -648,21 +648,17 @@ class IrInterpreter private constructor(
     }
 
     private fun interpretTry(element: IrTry) {
-        val frameOwner = callStack.getCurrentFrameOwner()
-        // 1. after first evaluation of try, must process finally expression
-        if (frameOwner is IrTry || frameOwner is IrCatch) {
-            callStack.dropSubFrame()
-            if (element.finallyExpression != null) {
-                callStack.addInstruction(SimpleInstruction(element))
-                callStack.addInstruction(CompoundInstruction(element.finallyExpression))
-                return
+        val possibleException = callStack.peekState()
+        callStack.dropSubFrame()
+        if (possibleException is ExceptionState) {
+            // after evaluation of finally, check that there are not unhandled exceptions left
+            val checkUnhandledException = fun() {
+                callStack.pushState(possibleException)
+                callStack.dropFrameUntilTryCatch()
             }
+            callStack.addInstruction(CustomInstruction(checkUnhandledException))
         }
-
-        // 2. after evaluation of finally, check that there are not unhandled exceptions left
-        if (callStack.peekState() is ExceptionState) {
-            callStack.dropFrameUntilTryCatch()
-        }
+        callStack.addInstruction(CompoundInstruction(element.finallyExpression))
     }
 
     private fun interpretThrow(expression: IrThrow) {
