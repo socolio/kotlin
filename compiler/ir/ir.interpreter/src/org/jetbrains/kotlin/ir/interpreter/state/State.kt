@@ -10,7 +10,6 @@ import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrFunction
 import org.jetbrains.kotlin.ir.expressions.IrCall
 import org.jetbrains.kotlin.ir.interpreter.IrInterpreterEnvironment
-import org.jetbrains.kotlin.ir.interpreter.exceptions.throwAsUserException
 import org.jetbrains.kotlin.ir.interpreter.handleUserException
 import org.jetbrains.kotlin.ir.symbols.IrSymbol
 import org.jetbrains.kotlin.ir.types.*
@@ -60,19 +59,6 @@ internal fun State.isSubtypeOf(other: IrType): Boolean {
     }
 
     return this.irClass.defaultType.isSubtypeOfClass(other.classOrNull!!)
-}
-
-/**
- * This method used to check if for not null parameter there was passed null argument.
- */
-internal fun State.checkNullability(
-    irType: IrType?, throwException: () -> Nothing = { NullPointerException().throwAsUserException() }
-): State {
-    if (irType !is IrSimpleType) return this
-    if (this.isNull() && !irType.isNullable()) {
-        throwException()
-    }
-    return this
 }
 
 /**

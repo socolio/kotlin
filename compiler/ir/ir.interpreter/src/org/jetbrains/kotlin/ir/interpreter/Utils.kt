@@ -15,7 +15,6 @@ import org.jetbrains.kotlin.ir.expressions.*
 import org.jetbrains.kotlin.ir.expressions.impl.IrConstImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrErrorExpressionImpl
 import org.jetbrains.kotlin.ir.interpreter.builtins.evaluateIntrinsicAnnotation
-import org.jetbrains.kotlin.ir.interpreter.exceptions.throwAsUserException
 import org.jetbrains.kotlin.ir.interpreter.stack.Variable
 import org.jetbrains.kotlin.ir.interpreter.state.*
 import org.jetbrains.kotlin.ir.interpreter.proxy.Proxy
@@ -238,20 +237,12 @@ fun IrClass.internalName(): String {
     return internalName.toString()
 }
 
-inline fun withExceptionHandler(block: () -> Any?): Any? {
-    try {
-        return block()
-    } catch (e: Throwable) {
-        e.throwAsUserException()
-    }
-}
-
 internal inline fun withExceptionHandler(environment: IrInterpreterEnvironment, block: () -> Unit) {
     try {
         block()
         // check if during proxy interpretation was an exception
         val possibleException = environment.callStack.peekState() as? ExceptionState
-        if (possibleException != null) environment.callStack.dropFrameUntilTryCatch()
+        if (possibleException != null) environment.callStack.dropFramesUntilTryCatch()
     } catch (e: Throwable) {
         e.handleUserException(environment)
     }
@@ -262,7 +253,7 @@ internal fun Throwable.handleUserException(environment: IrInterpreterEnvironment
     val irExceptionClass = environment.irExceptions.firstOrNull { it.name.asString() == exceptionName }
         ?: environment.irBuiltIns.throwableClass.owner
     environment.callStack.pushState(ExceptionState(this, irExceptionClass, environment.callStack.getStackTrace()))
-    environment.callStack.dropFrameUntilTryCatch()
+    environment.callStack.dropFramesUntilTryCatch()
 }
 
 /**
