@@ -290,7 +290,7 @@ private class CallStackFrameContainer(frame: SubFrame, val irFile: IrFile? = nul
     }
 }
 
-internal class SubFrame(private val instructions: MutableList<Instruction>, val owner: IrElement) {
+private class SubFrame(private val instructions: MutableList<Instruction>, val owner: IrElement) {
     private val memory = mutableListOf<Variable>()
     private val dataStack = DataStack()
 

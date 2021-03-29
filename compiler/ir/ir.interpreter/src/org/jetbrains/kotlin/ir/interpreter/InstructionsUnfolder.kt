@@ -132,14 +132,6 @@ private fun unfoldDelegatingConstructorCall(delegatingConstructorCall: IrFunctio
 }
 
 private fun unfoldValueParameters(expression: IrFunctionAccessExpression, callStack: CallStack) {
-    val irFunction = expression.symbol.owner
-    // if irFunction is lambda and it has receiver, then first descriptor must be taken from extension receiver
-    val receiverAsFirstArgument = when (expression.valueArgumentsCount != irFunction.valueParameters.size) {
-        true -> listOfNotNull(irFunction.getExtensionReceiver())
-        else -> listOf()
-    }
-    val valueParametersSymbols = receiverAsFirstArgument + irFunction.valueParameters.map { it.symbol }
-
     fun IrValueParameter.getDefault(): IrExpressionBody? {
         return defaultValue
             ?: (this.parent as? IrSimpleFunction)?.overriddenSymbols
@@ -147,13 +139,17 @@ private fun unfoldValueParameters(expression: IrFunctionAccessExpression, callSt
                 ?.firstNotNullResult { it }
     }
 
-    val valueArguments = (0 until expression.valueArgumentsCount).map { expression.getValueArgument(it) }
-    val defaultValues = (if (receiverAsFirstArgument.isNotEmpty()) listOf(null) else listOf()) + // TODO fix this
-            irFunction.valueParameters.map { expression.symbol.owner.valueParameters[it.index].getDefault()?.expression }
+    fun getDefaultForParameterAt(index: Int): IrExpression? {
+        return expression.symbol.owner.valueParameters[index].getDefault()?.expression
+    }
 
-    for (i in valueArguments.indices.reversed()) {
+    val irFunction = expression.symbol.owner
+    val valueParametersSymbols = irFunction.valueParameters.map { it.symbol }
+    val valueArguments = (0 until expression.valueArgumentsCount).map { expression.getValueArgument(it) }
+
+    for (i in valueParametersSymbols.indices.reversed()) {
         callStack.addInstruction(SimpleInstruction(valueParametersSymbols[i].owner))
-        val arg = valueArguments[i] ?: defaultValues[i]
+        val arg = valueArguments[i] ?: getDefaultForParameterAt(i)
         when {
             arg != null -> callStack.addInstruction(CompoundInstruction(arg))
             else ->
@@ -162,7 +158,13 @@ private fun unfoldValueParameters(expression: IrFunctionAccessExpression, callSt
                     callStack.addInstruction(SimpleInstruction(IrConstImpl.constNull(UNDEFINED_OFFSET, UNDEFINED_OFFSET, it)))
                 }
         }
+    }
 
+    // hack for extension receiver in lambda
+    if (expression.valueArgumentsCount != irFunction.valueParameters.size) {
+        val extensionReceiver = irFunction.getExtensionReceiver() ?: return
+        callStack.addInstruction(SimpleInstruction(extensionReceiver.owner))
+        valueArguments[0]?.let { callStack.addInstruction(CompoundInstruction(it)) }
     }
 }
 
@@ -185,18 +187,18 @@ private fun unfoldField(field: IrField, callStack: CallStack) {
 }
 
 private fun unfoldBody(body: IrBody, callStack: CallStack) {
-    unfoldStatements(body.statements.reversed(), callStack)
+    unfoldStatements(body.statements, callStack)
 }
 
 private fun unfoldBlock(block: IrBlock, callStack: CallStack) {
     callStack.newSubFrame(block, listOf())
     callStack.addInstruction(SimpleInstruction(block))
-    unfoldStatements(block.statements.reversed(), callStack)
+    unfoldStatements(block.statements, callStack)
 }
 
 private fun unfoldStatements(statements: List<IrStatement>, callStack: CallStack) {
-    for (statement in statements) {
-        when (statement) {
+    for (i in statements.indices.reversed()) {
+        when (val statement = statements[i]) {
             is IrClass -> if (!statement.isLocal) TODO("Only local classes are supported")
             is IrFunction -> if (!statement.isLocal) TODO("Only local functions are supported")
             else -> callStack.addInstruction(CompoundInstruction(statement))
