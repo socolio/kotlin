@@ -56,19 +56,22 @@ internal inline class CustomInstruction(val evaluate: () -> Unit) : Instruction 
 }
 
 class IrInterpreter private constructor(
-    val irBuiltIns: IrBuiltIns,
     private val bodyMap: Map<IdSignature, IrBody>,
     private val environment: IrInterpreterEnvironment
 ) {
+    private val irBuiltIns: IrBuiltIns
+        get() = environment.irBuiltIns
     private val callStack: CallStack
         get() = environment.callStack
     private var commandCount = 0
 
     constructor(irBuiltIns: IrBuiltIns, bodyMap: Map<IdSignature, IrBody> = emptyMap()) :
-            this(irBuiltIns, bodyMap, IrInterpreterEnvironment(irBuiltIns, CallStack()))
+            this(bodyMap, IrInterpreterEnvironment(irBuiltIns, CallStack()))
 
     private constructor(environment: IrInterpreterEnvironment, bodyMap: Map<IdSignature, IrBody> = emptyMap()) :
-            this(environment.irBuiltIns, bodyMap, environment)
+            this(bodyMap, environment)
+
+    constructor(irModule: IrModuleFragment) : this(emptyMap(), IrInterpreterEnvironment(irModule))
 
     private fun incrementAndCheckCommands() {
         commandCount++

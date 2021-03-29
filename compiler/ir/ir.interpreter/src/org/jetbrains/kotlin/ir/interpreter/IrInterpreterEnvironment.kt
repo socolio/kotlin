@@ -6,10 +6,12 @@
 package org.jetbrains.kotlin.ir.interpreter
 
 import org.jetbrains.kotlin.ir.declarations.IrClass
+import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import org.jetbrains.kotlin.ir.descriptors.IrBuiltIns
 import org.jetbrains.kotlin.ir.interpreter.stack.CallStack
 import org.jetbrains.kotlin.ir.interpreter.state.Complex
 import org.jetbrains.kotlin.ir.symbols.IrSymbol
+import org.jetbrains.kotlin.ir.util.isSubclassOf
 
 internal class IrInterpreterEnvironment(val irBuiltIns: IrBuiltIns, val callStack: CallStack) {
     val irExceptions = mutableListOf<IrClass>()
@@ -20,6 +22,15 @@ internal class IrInterpreterEnvironment(val irBuiltIns: IrBuiltIns, val callStac
         irExceptions.addAll(environment.irExceptions)
         mapOfEnums = environment.mapOfEnums
         mapOfObjects = environment.mapOfObjects
+    }
+
+    constructor(irModule: IrModuleFragment) : this(irModule.irBuiltins, CallStack()) {
+        irExceptions.addAll(
+            irModule.files
+                .flatMap { it.declarations }
+                .filterIsInstance<IrClass>()
+                .filter { it.isSubclassOf(irBuiltIns.throwableClass.owner) }
+        )
     }
 
     fun copyWithNewCallStack(): IrInterpreterEnvironment {

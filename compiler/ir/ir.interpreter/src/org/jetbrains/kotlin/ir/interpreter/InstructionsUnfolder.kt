@@ -286,11 +286,12 @@ private fun unfoldEnumEntry(enumEntry: IrEnumEntry, environment: IrInterpreterEn
 }
 
 private fun unfoldVariable(variable: IrVariable, callStack: CallStack) {
-    if (variable.initializer == null) {
-        callStack.addVariable(Variable(variable.symbol))
-    } else {
-        callStack.addInstruction(SimpleInstruction(variable))
-        callStack.addInstruction(CompoundInstruction(variable.initializer!!))
+    when (variable.initializer) {
+        null -> callStack.addVariable(Variable(variable.symbol))
+        else -> {
+            callStack.addInstruction(SimpleInstruction(variable))
+            callStack.addInstruction(CompoundInstruction(variable.initializer!!))
+        }
     }
 }
 
