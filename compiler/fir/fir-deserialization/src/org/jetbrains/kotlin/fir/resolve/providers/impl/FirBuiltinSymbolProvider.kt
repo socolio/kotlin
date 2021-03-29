@@ -9,6 +9,8 @@ import org.jetbrains.kotlin.builtins.StandardNames
 import org.jetbrains.kotlin.builtins.functions.FunctionClassKind
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.fir.*
+import org.jetbrains.kotlin.fir.caches.createCacheWithPostCompute
+import org.jetbrains.kotlin.fir.caches.firCachesFactory
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.declarations.builder.buildRegularClass
 import org.jetbrains.kotlin.fir.declarations.builder.buildSimpleFunction
@@ -290,7 +292,20 @@ open class FirBuiltinSymbolProvider(session: FirSession, val kotlinScopeProvider
             ).memberDeserializer
         }
 
-        private val lookup = mutableMapOf<ClassId, FirRegularClassSymbol>()
+        private val lookup = session.firCachesFactory.createCacheWithPostCompute(
+            { classId: ClassId, context: FirDeserializationContext? -> FirRegularClassSymbol(classId) to context }
+        ) { classId, symbol, parentContext ->
+            val classData = classDataFinder.findClassData(classId)!!
+            val classProto = classData.classProto
+
+            deserializeClassToSymbol(
+                classId, classProto, symbol, nameResolver, session,
+                null, kotlinScopeProvider, parentContext,
+                null,
+                origin = FirDeclarationOrigin.BuiltIns,
+                this::findAndDeserializeClass,
+            )
+        }
 
         fun getClassLikeSymbolByFqName(classId: ClassId): FirRegularClassSymbol? =
             findAndDeserializeClass(classId)
@@ -301,18 +316,7 @@ open class FirBuiltinSymbolProvider(session: FirSession, val kotlinScopeProvider
         ): FirRegularClassSymbol? {
             val classIdExists = classId in classDataFinder.allClassIds
             if (!classIdExists) return null
-            return lookup.getOrPut(classId, { FirRegularClassSymbol(classId) }) { symbol ->
-                val classData = classDataFinder.findClassData(classId)!!
-                val classProto = classData.classProto
-
-                deserializeClassToSymbol(
-                    classId, classProto, symbol, nameResolver, session,
-                    null, kotlinScopeProvider, parentContext,
-                    null,
-                    origin = FirDeclarationOrigin.BuiltIns,
-                    this::findAndDeserializeClass,
-                )
-            }
+            return lookup.getValue(classId, parentContext)
         }
 
         fun getTopLevelCallableSymbols(name: Name): List<FirCallableSymbol<*>> {
