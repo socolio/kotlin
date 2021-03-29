@@ -9,7 +9,7 @@ import org.jetbrains.kotlin.builtins.StandardNames
 import org.jetbrains.kotlin.builtins.functions.FunctionClassKind
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.fir.*
-import org.jetbrains.kotlin.fir.caches.firCachesFactory
+import org.jetbrains.kotlin.fir.caches.*
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.declarations.builder.buildRegularClass
 import org.jetbrains.kotlin.fir.declarations.builder.buildSimpleFunction
@@ -48,11 +48,8 @@ import java.io.InputStream
 //TODO make thread safe
 @ThreadSafeMutableState
 open class FirBuiltinSymbolProvider(session: FirSession, val kotlinScopeProvider: KotlinScopeProvider) : FirSymbolProvider(session) {
-
-    private data class SyntheticFunctionalInterfaceSymbolKey(val kind: FunctionClassKind, val arity: Int)
-
     private val allPackageFragments = loadBuiltIns().groupBy { it.fqName }
-    private val syntheticFunctionalInterfaceSymbols = mutableMapOf<SyntheticFunctionalInterfaceSymbolKey, FirRegularClassSymbol>()
+    private val syntheticFunctionalInterfaceCache = SyntheticFunctionalInterfaceCache(session, kotlinScopeProvider)
 
     private fun loadBuiltIns(): List<BuiltInsPackageFragment> {
         val classLoader = this::class.java.classLoader
@@ -74,164 +71,9 @@ open class FirBuiltinSymbolProvider(session: FirSession, val kotlinScopeProvider
     override fun getClassLikeSymbolByFqName(classId: ClassId): FirRegularClassSymbol? {
         return allPackageFragments[classId.packageFqName]?.firstNotNullResult {
             it.getClassLikeSymbolByFqName(classId)
-        } ?: trySyntheticFunctionalInterface(classId)
+        } ?: syntheticFunctionalInterfaceCache.tryGetSyntheticFunctionalInterface(classId)
     }
 
-    private fun trySyntheticFunctionalInterface(classId: ClassId): FirRegularClassSymbol? {
-        return with(classId) {
-            val className = relativeClassName.asString()
-            val kind = FunctionClassKind.byClassNamePrefix(packageFqName, className) ?: return@with null
-            val prefix = kind.classNamePrefix
-            val arity = className.substring(prefix.length).toIntOrNull() ?: return null
-            syntheticFunctionalInterfaceSymbols.getOrPut(SyntheticFunctionalInterfaceSymbolKey(kind, arity)) {
-                FirRegularClassSymbol(this).apply symbol@{
-                    buildRegularClass klass@{
-                        declarationSiteSession = session
-                        origin = FirDeclarationOrigin.BuiltIns
-                        name = relativeClassName.shortName()
-                        status = FirResolvedDeclarationStatusImpl(
-                            Visibilities.Public,
-                            Modality.ABSTRACT,
-                            EffectiveVisibility.Public
-                        ).apply {
-                            isExpect = false
-                            isActual = false
-                            isInner = false
-                            isCompanion = false
-                            isData = false
-                            isInline = false
-                        }
-                        classKind = ClassKind.INTERFACE
-                        scopeProvider = kotlinScopeProvider
-                        symbol = this@symbol
-                        resolvePhase = FirResolvePhase.ANALYZED_DEPENDENCIES
-                        typeParameters.addAll(
-                            (1..arity).map {
-                                buildTypeParameter {
-                                    declarationSiteSession = session
-                                    resolvePhase = FirResolvePhase.ANALYZED_DEPENDENCIES
-                                    origin = FirDeclarationOrigin.BuiltIns
-                                    name = Name.identifier("P$it")
-                                    symbol = FirTypeParameterSymbol()
-                                    variance = Variance.IN_VARIANCE
-                                    isReified = false
-                                    bounds += session.builtinTypes.nullableAnyType
-                                }
-                            },
-                        )
-                        typeParameters.add(
-                            buildTypeParameter {
-                                declarationSiteSession = session
-                                resolvePhase = FirResolvePhase.ANALYZED_DEPENDENCIES
-                                origin = FirDeclarationOrigin.BuiltIns
-                                name = Name.identifier("R")
-                                symbol = FirTypeParameterSymbol()
-                                variance = Variance.OUT_VARIANCE
-                                isReified = false
-                                bounds += session.builtinTypes.nullableAnyType
-                            },
-                        )
-                        val name = OperatorNameConventions.INVOKE
-                        val functionStatus = FirResolvedDeclarationStatusImpl(
-                            Visibilities.Public,
-                            Modality.ABSTRACT,
-                            EffectiveVisibility.Public
-                        ).apply {
-                            isExpect = false
-                            isActual = false
-                            isOverride = false
-                            isOperator = true
-                            isInfix = false
-                            isInline = false
-                            isTailRec = false
-                            isExternal = false
-                            isSuspend =
-                                kind == FunctionClassKind.SuspendFunction ||
-                                        kind == FunctionClassKind.KSuspendFunction
-                        }
-                        val typeArguments = typeParameters.map {
-                            buildResolvedTypeRef {
-                                type = ConeTypeParameterTypeImpl(it.symbol.toLookupTag(), false)
-                            }
-                        }
-
-                        fun createSuperType(
-                            kind: FunctionClassKind,
-                        ): FirResolvedTypeRef {
-                            return buildResolvedTypeRef {
-                                type = ConeClassLikeLookupTagImpl(kind.classId(arity))
-                                    .constructClassType(typeArguments.map { it.type }.toTypedArray(), isNullable = false)
-                            }
-                        }
-
-                        superTypeRefs += when (kind) {
-                            FunctionClassKind.Function -> listOf(
-                                buildResolvedTypeRef {
-                                    type = ConeClassLikeLookupTagImpl(StandardClassIds.Function)
-                                        .constructClassType(arrayOf(typeArguments.last().type), isNullable = false)
-                                }
-                            )
-
-                            FunctionClassKind.SuspendFunction -> listOf(
-                                buildResolvedTypeRef {
-                                    type = ConeClassLikeLookupTagImpl(StandardClassIds.Function)
-                                        .constructClassType(arrayOf(typeArguments.last().type), isNullable = false)
-                                }
-                            )
-
-                            FunctionClassKind.KFunction -> listOf(
-                                buildResolvedTypeRef {
-                                    type = ConeClassLikeLookupTagImpl(StandardClassIds.KFunction)
-                                        .constructClassType(arrayOf(typeArguments.last().type), isNullable = false)
-                                },
-                                createSuperType(FunctionClassKind.Function)
-                            )
-
-                            FunctionClassKind.KSuspendFunction -> listOf(
-                                buildResolvedTypeRef {
-                                    type = ConeClassLikeLookupTagImpl(StandardClassIds.KFunction)
-                                        .constructClassType(arrayOf(typeArguments.last().type), isNullable = false)
-                                },
-                                createSuperType(FunctionClassKind.SuspendFunction)
-                            )
-                        }
-                        addDeclaration(
-                            buildSimpleFunction {
-                                declarationSiteSession = session
-                                resolvePhase = FirResolvePhase.ANALYZED_DEPENDENCIES
-                                origin = FirDeclarationOrigin.BuiltIns
-                                returnTypeRef = typeArguments.last()
-                                this.name = name
-                                status = functionStatus
-                                symbol = FirNamedFunctionSymbol(
-                                    CallableId(packageFqName, relativeClassName, name)
-                                )
-                                resolvePhase = FirResolvePhase.ANALYZED_DEPENDENCIES
-                                valueParameters += typeArguments.dropLast(1).mapIndexed { index, typeArgument ->
-                                    val parameterName = Name.identifier("p${index + 1}")
-                                    buildValueParameter {
-                                        declarationSiteSession = session
-                                        origin = FirDeclarationOrigin.BuiltIns
-                                        resolvePhase = FirResolvePhase.ANALYZED_DEPENDENCIES
-                                        returnTypeRef = typeArgument
-                                        this.name = parameterName
-                                        symbol = FirVariableSymbol(parameterName)
-                                        defaultValue = null
-                                        isCrossinline = false
-                                        isNoinline = false
-                                        isVararg = false
-                                    }
-                                }
-                                dispatchReceiverType = classId.defaultType(this@klass.typeParameters.map { it.symbol })
-                            }
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    private fun FunctionClassKind.classId(arity: Int) = ClassId(packageFqName, numberedClassName(arity))
 
     @FirSymbolProviderInternals
     override fun getTopLevelCallableSymbolsTo(destination: MutableList<FirCallableSymbol<*>>, packageFqName: FqName, name: Name) {
@@ -335,7 +177,171 @@ private data class BinaryVersionAndPackageFragment(
             }
 
             val packageFragment = ProtoBuf.PackageFragment.parseFrom(stream, BuiltInSerializerProtocol.extensionRegistry)
-           return BinaryVersionAndPackageFragment(version, packageFragment)
+            return BinaryVersionAndPackageFragment(version, packageFragment)
         }
     }
+}
+
+private class SyntheticFunctionalInterfaceCache(private val session: FirSession, private val kotlinScopeProvider: KotlinScopeProvider) {
+    private val syntheticFunctionalInterfaceCache =
+        session.firCachesFactory.createCache(::createSyntheticFunctionalInterface)
+
+    fun tryGetSyntheticFunctionalInterface(classId: ClassId): FirRegularClassSymbol? {
+        return syntheticFunctionalInterfaceCache.getValue(classId)
+    }
+
+    private fun createSyntheticFunctionalInterface(classId: ClassId): FirRegularClassSymbol? {
+        return with(classId) {
+            val className = relativeClassName.asString()
+            val kind = FunctionClassKind.byClassNamePrefix(packageFqName, className) ?: return@with null
+            val prefix = kind.classNamePrefix
+            val arity = className.substring(prefix.length).toIntOrNull() ?: return null
+            FirRegularClassSymbol(classId).apply symbol@{
+                buildRegularClass klass@{
+                    declarationSiteSession = this@SyntheticFunctionalInterfaceCache.session
+                    origin = FirDeclarationOrigin.BuiltIns
+                    name = relativeClassName.shortName()
+                    status = FirResolvedDeclarationStatusImpl(
+                        Visibilities.Public,
+                        Modality.ABSTRACT,
+                        EffectiveVisibility.Public
+                    ).apply {
+                        isExpect = false
+                        isActual = false
+                        isInner = false
+                        isCompanion = false
+                        isData = false
+                        isInline = false
+                    }
+                    classKind = ClassKind.INTERFACE
+                    scopeProvider = kotlinScopeProvider
+                    symbol = this@symbol
+                    resolvePhase = FirResolvePhase.ANALYZED_DEPENDENCIES
+                    typeParameters.addAll(
+                        (1..arity).map {
+                            buildTypeParameter {
+                                declarationSiteSession = this@SyntheticFunctionalInterfaceCache.session
+                                resolvePhase = FirResolvePhase.ANALYZED_DEPENDENCIES
+                                origin = FirDeclarationOrigin.BuiltIns
+                                name = Name.identifier("P$it")
+                                symbol = FirTypeParameterSymbol()
+                                variance = Variance.IN_VARIANCE
+                                isReified = false
+                                bounds += session.builtinTypes.nullableAnyType
+                            }
+                        },
+                    )
+                    typeParameters.add(
+                        buildTypeParameter {
+                            declarationSiteSession = this@SyntheticFunctionalInterfaceCache.session
+                            resolvePhase = FirResolvePhase.ANALYZED_DEPENDENCIES
+                            origin = FirDeclarationOrigin.BuiltIns
+                            name = Name.identifier("R")
+                            symbol = FirTypeParameterSymbol()
+                            variance = Variance.OUT_VARIANCE
+                            isReified = false
+                            bounds += session.builtinTypes.nullableAnyType
+                        },
+                    )
+                    val name = OperatorNameConventions.INVOKE
+                    val functionStatus = FirResolvedDeclarationStatusImpl(
+                        Visibilities.Public,
+                        Modality.ABSTRACT,
+                        EffectiveVisibility.Public
+                    ).apply {
+                        isExpect = false
+                        isActual = false
+                        isOverride = false
+                        isOperator = true
+                        isInfix = false
+                        isInline = false
+                        isTailRec = false
+                        isExternal = false
+                        isSuspend =
+                            kind == FunctionClassKind.SuspendFunction ||
+                                    kind == FunctionClassKind.KSuspendFunction
+                    }
+                    val typeArguments = typeParameters.map {
+                        buildResolvedTypeRef {
+                            type = ConeTypeParameterTypeImpl(it.symbol.toLookupTag(), false)
+                        }
+                    }
+
+                    fun createSuperType(
+                        kind: FunctionClassKind,
+                    ): FirResolvedTypeRef {
+                        return buildResolvedTypeRef {
+                            type = ConeClassLikeLookupTagImpl(kind.classId(arity))
+                                .constructClassType(typeArguments.map { it.type }.toTypedArray(), isNullable = false)
+                        }
+                    }
+
+                    superTypeRefs += when (kind) {
+                        FunctionClassKind.Function -> listOf(
+                            buildResolvedTypeRef {
+                                type = ConeClassLikeLookupTagImpl(StandardClassIds.Function)
+                                    .constructClassType(arrayOf(typeArguments.last().type), isNullable = false)
+                            }
+                        )
+
+                        FunctionClassKind.SuspendFunction -> listOf(
+                            buildResolvedTypeRef {
+                                type = ConeClassLikeLookupTagImpl(StandardClassIds.Function)
+                                    .constructClassType(arrayOf(typeArguments.last().type), isNullable = false)
+                            }
+                        )
+
+                        FunctionClassKind.KFunction -> listOf(
+                            buildResolvedTypeRef {
+                                type = ConeClassLikeLookupTagImpl(StandardClassIds.KFunction)
+                                    .constructClassType(arrayOf(typeArguments.last().type), isNullable = false)
+                            },
+                            createSuperType(FunctionClassKind.Function)
+                        )
+
+                        FunctionClassKind.KSuspendFunction -> listOf(
+                            buildResolvedTypeRef {
+                                type = ConeClassLikeLookupTagImpl(StandardClassIds.KFunction)
+                                    .constructClassType(arrayOf(typeArguments.last().type), isNullable = false)
+                            },
+                            createSuperType(FunctionClassKind.SuspendFunction)
+                        )
+                    }
+                    addDeclaration(
+                        buildSimpleFunction {
+                            declarationSiteSession = this@SyntheticFunctionalInterfaceCache.session
+                            resolvePhase = FirResolvePhase.ANALYZED_DEPENDENCIES
+                            origin = FirDeclarationOrigin.BuiltIns
+                            returnTypeRef = typeArguments.last()
+                            this.name = name
+                            status = functionStatus
+                            symbol = FirNamedFunctionSymbol(
+                                CallableId(packageFqName, relativeClassName, name)
+                            )
+                            resolvePhase = FirResolvePhase.ANALYZED_DEPENDENCIES
+                            valueParameters += typeArguments.dropLast(1).mapIndexed { index, typeArgument ->
+                                val parameterName = Name.identifier("p${index + 1}")
+                                buildValueParameter {
+                                    declarationSiteSession = this@SyntheticFunctionalInterfaceCache.session
+                                    origin = FirDeclarationOrigin.BuiltIns
+                                    resolvePhase = FirResolvePhase.ANALYZED_DEPENDENCIES
+                                    returnTypeRef = typeArgument
+                                    this.name = parameterName
+                                    symbol = FirVariableSymbol(parameterName)
+                                    defaultValue = null
+                                    isCrossinline = false
+                                    isNoinline = false
+                                    isVararg = false
+                                }
+                            }
+                            dispatchReceiverType = classId.defaultType(this@klass.typeParameters.map { it.symbol })
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+
+    private fun FunctionClassKind.classId(arity: Int) = ClassId(packageFqName, numberedClassName(arity))
 }
