@@ -507,6 +507,8 @@ message IrClass {
   repeated IrTypeParameter type_parameter = 4;
   repeated IrDeclaration declaration = 5;
   repeated int32 super_type = 6 [packed=true];
+  optional int32 inline_class_underlying_property_name = 7;
+  optional int32 inline_class_underlying_property_type = 8;
 }
 
 message IrTypeAlias {
@@ -593,4 +595,9 @@ message IrStatement {
 message PirBodyCarrier {
   required int32 lastModified = 1;
   optional int64 containerFieldSymbol = 2;
+}
+
+message PirInlineClassRepresentation {
+  required int32 underlying_property_name = 1;
+  required int32 underlying_property_type = 2;
 }

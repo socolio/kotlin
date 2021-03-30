@@ -15,12 +15,14 @@ import org.jetbrains.kotlin.backend.common.serialization.proto.PirEnumEntryCarri
 import org.jetbrains.kotlin.backend.common.serialization.proto.PirErrorDeclarationCarrier
 import org.jetbrains.kotlin.backend.common.serialization.proto.PirFieldCarrier
 import org.jetbrains.kotlin.backend.common.serialization.proto.PirFunctionCarrier
+import org.jetbrains.kotlin.backend.common.serialization.proto.PirInlineClassRepresentation as ProtoPirInlineClassRepresentation
 import org.jetbrains.kotlin.backend.common.serialization.proto.PirLocalDelegatedPropertyCarrier
 import org.jetbrains.kotlin.backend.common.serialization.proto.PirPropertyCarrier
 import org.jetbrains.kotlin.backend.common.serialization.proto.PirTypeAliasCarrier
 import org.jetbrains.kotlin.backend.common.serialization.proto.PirTypeParameterCarrier
 import org.jetbrains.kotlin.backend.common.serialization.proto.PirValueParameterCarrier
 import org.jetbrains.kotlin.descriptors.DescriptorVisibility
+import org.jetbrains.kotlin.descriptors.InlineClassRepresentation
 import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
 import org.jetbrains.kotlin.ir.declarations.IrVariable
@@ -59,6 +61,7 @@ import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
 import org.jetbrains.kotlin.ir.symbols.IrSymbol
 import org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol
 import org.jetbrains.kotlin.ir.symbols.IrValueParameterSymbol
+import org.jetbrains.kotlin.ir.types.IrSimpleType
 import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.protobuf.ExtensionRegistryLite
 
@@ -102,6 +105,8 @@ internal abstract class IrCarrierDeserializer {
 
     abstract fun deserializeModality(proto: Long): Modality
 
+    abstract fun deserializeInlineClassRepresentation(proto: ProtoPirInlineClassRepresentation): InlineClassRepresentation<IrSimpleType>
+
     abstract fun deserializeIsExternalClass(proto: Long): Boolean
 
     abstract fun deserializeIsExternalField(proto: Long): Boolean
@@ -132,7 +137,8 @@ internal abstract class IrCarrierDeserializer {
             deserializeVisibility(proto.flags),
             deserializeModality(proto.flags),
             proto.typeParametersList.map { deserializeTypeParameter(it) },
-            proto.superTypesList.map { deserializeSuperType(it) }
+            proto.superTypesList.map { deserializeSuperType(it) },
+            if (proto.hasInlineClassRepresentation()) deserializeInlineClassRepresentation(proto.inlineClassRepresentation) else null
         )
     }
 

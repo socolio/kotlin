@@ -121,6 +121,16 @@ public final class IrClass extends
             input.popLimit(limit);
             break;
           }
+          case 56: {
+            bitField0_ |= 0x00000008;
+            inlineClassUnderlyingPropertyName_ = input.readInt32();
+            break;
+          }
+          case 64: {
+            bitField0_ |= 0x00000010;
+            inlineClassUnderlyingPropertyType_ = input.readInt32();
+            break;
+          }
         }
       }
     } catch (org.jetbrains.kotlin.protobuf.InvalidProtocolBufferException e) {
@@ -302,6 +312,36 @@ public final class IrClass extends
   }
   private int superTypeMemoizedSerializedSize = -1;
 
+  public static final int INLINE_CLASS_UNDERLYING_PROPERTY_NAME_FIELD_NUMBER = 7;
+  private int inlineClassUnderlyingPropertyName_;
+  /**
+   * <code>optional int32 inline_class_underlying_property_name = 7;</code>
+   */
+  public boolean hasInlineClassUnderlyingPropertyName() {
+    return ((bitField0_ & 0x00000008) == 0x00000008);
+  }
+  /**
+   * <code>optional int32 inline_class_underlying_property_name = 7;</code>
+   */
+  public int getInlineClassUnderlyingPropertyName() {
+    return inlineClassUnderlyingPropertyName_;
+  }
+
+  public static final int INLINE_CLASS_UNDERLYING_PROPERTY_TYPE_FIELD_NUMBER = 8;
+  private int inlineClassUnderlyingPropertyType_;
+  /**
+   * <code>optional int32 inline_class_underlying_property_type = 8;</code>
+   */
+  public boolean hasInlineClassUnderlyingPropertyType() {
+    return ((bitField0_ & 0x00000010) == 0x00000010);
+  }
+  /**
+   * <code>optional int32 inline_class_underlying_property_type = 8;</code>
+   */
+  public int getInlineClassUnderlyingPropertyType() {
+    return inlineClassUnderlyingPropertyType_;
+  }
+
   private void initFields() {
     base_ = org.jetbrains.kotlin.backend.common.serialization.proto.IrDeclarationBase.getDefaultInstance();
     name_ = 0;
@@ -309,6 +349,8 @@ public final class IrClass extends
     typeParameter_ = java.util.Collections.emptyList();
     declaration_ = java.util.Collections.emptyList();
     superType_ = java.util.Collections.emptyList();
+    inlineClassUnderlyingPropertyName_ = 0;
+    inlineClassUnderlyingPropertyType_ = 0;
   }
   private byte memoizedIsInitialized = -1;
   public final boolean isInitialized() {
@@ -375,6 +417,12 @@ public final class IrClass extends
     for (int i = 0; i < superType_.size(); i++) {
       output.writeInt32NoTag(superType_.get(i));
     }
+    if (((bitField0_ & 0x00000008) == 0x00000008)) {
+      output.writeInt32(7, inlineClassUnderlyingPropertyName_);
+    }
+    if (((bitField0_ & 0x00000010) == 0x00000010)) {
+      output.writeInt32(8, inlineClassUnderlyingPropertyType_);
+    }
     output.writeRawBytes(unknownFields);
   }
 
@@ -417,6 +465,14 @@ public final class IrClass extends
             .computeInt32SizeNoTag(dataSize);
       }
       superTypeMemoizedSerializedSize = dataSize;
+    }
+    if (((bitField0_ & 0x00000008) == 0x00000008)) {
+      size += org.jetbrains.kotlin.protobuf.CodedOutputStream
+        .computeInt32Size(7, inlineClassUnderlyingPropertyName_);
+    }
+    if (((bitField0_ & 0x00000010) == 0x00000010)) {
+      size += org.jetbrains.kotlin.protobuf.CodedOutputStream
+        .computeInt32Size(8, inlineClassUnderlyingPropertyType_);
     }
     size += unknownFields.size();
     memoizedSerializedSize = size;
@@ -524,6 +580,10 @@ public final class IrClass extends
       bitField0_ = (bitField0_ & ~0x00000010);
       superType_ = java.util.Collections.emptyList();
       bitField0_ = (bitField0_ & ~0x00000020);
+      inlineClassUnderlyingPropertyName_ = 0;
+      bitField0_ = (bitField0_ & ~0x00000040);
+      inlineClassUnderlyingPropertyType_ = 0;
+      bitField0_ = (bitField0_ & ~0x00000080);
       return this;
     }
 
@@ -574,6 +634,14 @@ public final class IrClass extends
         bitField0_ = (bitField0_ & ~0x00000020);
       }
       result.superType_ = superType_;
+      if (((from_bitField0_ & 0x00000040) == 0x00000040)) {
+        to_bitField0_ |= 0x00000008;
+      }
+      result.inlineClassUnderlyingPropertyName_ = inlineClassUnderlyingPropertyName_;
+      if (((from_bitField0_ & 0x00000080) == 0x00000080)) {
+        to_bitField0_ |= 0x00000010;
+      }
+      result.inlineClassUnderlyingPropertyType_ = inlineClassUnderlyingPropertyType_;
       result.bitField0_ = to_bitField0_;
       return result;
     }
@@ -618,6 +686,12 @@ public final class IrClass extends
           superType_.addAll(other.superType_);
         }
         
+      }
+      if (other.hasInlineClassUnderlyingPropertyName()) {
+        setInlineClassUnderlyingPropertyName(other.getInlineClassUnderlyingPropertyName());
+      }
+      if (other.hasInlineClassUnderlyingPropertyType()) {
+        setInlineClassUnderlyingPropertyType(other.getInlineClassUnderlyingPropertyType());
       }
       setUnknownFields(
           getUnknownFields().concat(other.unknownFields));
@@ -1141,6 +1215,70 @@ public final class IrClass extends
     public Builder clearSuperType() {
       superType_ = java.util.Collections.emptyList();
       bitField0_ = (bitField0_ & ~0x00000020);
+      
+      return this;
+    }
+
+    private int inlineClassUnderlyingPropertyName_ ;
+    /**
+     * <code>optional int32 inline_class_underlying_property_name = 7;</code>
+     */
+    public boolean hasInlineClassUnderlyingPropertyName() {
+      return ((bitField0_ & 0x00000040) == 0x00000040);
+    }
+    /**
+     * <code>optional int32 inline_class_underlying_property_name = 7;</code>
+     */
+    public int getInlineClassUnderlyingPropertyName() {
+      return inlineClassUnderlyingPropertyName_;
+    }
+    /**
+     * <code>optional int32 inline_class_underlying_property_name = 7;</code>
+     */
+    public Builder setInlineClassUnderlyingPropertyName(int value) {
+      bitField0_ |= 0x00000040;
+      inlineClassUnderlyingPropertyName_ = value;
+      
+      return this;
+    }
+    /**
+     * <code>optional int32 inline_class_underlying_property_name = 7;</code>
+     */
+    public Builder clearInlineClassUnderlyingPropertyName() {
+      bitField0_ = (bitField0_ & ~0x00000040);
+      inlineClassUnderlyingPropertyName_ = 0;
+      
+      return this;
+    }
+
+    private int inlineClassUnderlyingPropertyType_ ;
+    /**
+     * <code>optional int32 inline_class_underlying_property_type = 8;</code>
+     */
+    public boolean hasInlineClassUnderlyingPropertyType() {
+      return ((bitField0_ & 0x00000080) == 0x00000080);
+    }
+    /**
+     * <code>optional int32 inline_class_underlying_property_type = 8;</code>
+     */
+    public int getInlineClassUnderlyingPropertyType() {
+      return inlineClassUnderlyingPropertyType_;
+    }
+    /**
+     * <code>optional int32 inline_class_underlying_property_type = 8;</code>
+     */
+    public Builder setInlineClassUnderlyingPropertyType(int value) {
+      bitField0_ |= 0x00000080;
+      inlineClassUnderlyingPropertyType_ = value;
+      
+      return this;
+    }
+    /**
+     * <code>optional int32 inline_class_underlying_property_type = 8;</code>
+     */
+    public Builder clearInlineClassUnderlyingPropertyType() {
+      bitField0_ = (bitField0_ & ~0x00000080);
+      inlineClassUnderlyingPropertyType_ = 0;
       
       return this;
     }

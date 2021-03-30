@@ -74,4 +74,22 @@ public interface IrClassOrBuilder extends
    * <code>repeated int32 super_type = 6 [packed = true];</code>
    */
   int getSuperType(int index);
+
+  /**
+   * <code>optional int32 inline_class_underlying_property_name = 7;</code>
+   */
+  boolean hasInlineClassUnderlyingPropertyName();
+  /**
+   * <code>optional int32 inline_class_underlying_property_name = 7;</code>
+   */
+  int getInlineClassUnderlyingPropertyName();
+
+  /**
+   * <code>optional int32 inline_class_underlying_property_type = 8;</code>
+   */
+  boolean hasInlineClassUnderlyingPropertyType();
+  /**
+   * <code>optional int32 inline_class_underlying_property_type = 8;</code>
+   */
+  int getInlineClassUnderlyingPropertyType();
 }

@@ -8,6 +8,7 @@ package org.jetbrains.kotlin.ir.serialization
 import org.jetbrains.kotlin.backend.common.serialization.IrFileSerializer
 import org.jetbrains.kotlin.backend.common.serialization.IrFlags
 import org.jetbrains.kotlin.descriptors.DescriptorVisibility
+import org.jetbrains.kotlin.descriptors.InlineClassRepresentation
 import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
 import org.jetbrains.kotlin.ir.declarations.IrVariable
@@ -16,13 +17,14 @@ import org.jetbrains.kotlin.ir.expressions.IrBody
 import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
 import org.jetbrains.kotlin.ir.expressions.IrExpressionBody
 import org.jetbrains.kotlin.ir.symbols.*
+import org.jetbrains.kotlin.ir.types.IrSimpleType
 import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.metadata.deserialization.Flags
 import org.jetbrains.kotlin.serialization.deserialization.ProtoEnumFlags
 import org.jetbrains.kotlin.serialization.deserialization.descriptorVisibility
-
 import org.jetbrains.kotlin.backend.common.serialization.proto.IrConstructorCall as ProtoIrConstructorCall
 import org.jetbrains.kotlin.backend.common.serialization.proto.IrVariable as ProtoIrVariable
+import org.jetbrains.kotlin.backend.common.serialization.proto.PirInlineClassRepresentation as ProtoPirInlineClassRepresentation
 
 internal class IrCarrierSerializerImpl(val fileSerializer: IrFileSerializer, val bodyIndex: (IrBody) -> Int) : IrCarrierSerializer() {
     override fun serializeParentSymbol(value: IrSymbol): Long {
@@ -95,6 +97,14 @@ internal class IrCarrierSerializerImpl(val fileSerializer: IrFileSerializer, val
 
     override fun serializeModality(value: Modality): Long {
         return Flags.MODALITY.toFlags(ProtoEnumFlags.modality(value)).toLong()
+    }
+
+    override fun serializeInlineClassRepresentation(value: InlineClassRepresentation<IrSimpleType>): ProtoPirInlineClassRepresentation {
+        return ProtoPirInlineClassRepresentation.newBuilder().apply {
+            val (name, type) = fileSerializer.serializeInlineClassRepresentation(value)
+            underlyingPropertyName = name
+            underlyingPropertyType = type
+        }.build()
     }
 
     override fun serializeIsExternalClass(value: Boolean): Long {
