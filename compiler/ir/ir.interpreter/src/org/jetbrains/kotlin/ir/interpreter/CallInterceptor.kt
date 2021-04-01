@@ -37,10 +37,10 @@ internal interface CallInterceptor {
     val interpreter: IrInterpreter
 
     fun interceptProxy(irFunction: IrFunction, valueArguments: List<Variable>, expectedResultClass: Class<*> = Any::class.java): Any?
-    fun interceptCall(call: IrCall, irFunction: IrFunction, receiver: State?, args: List<State>)
-    fun interceptConstructor(constructorCall: IrFunctionAccessExpression, receiver: State, args: List<State>)
-    fun interceptGetObjectValue(expression: IrGetObjectValue)
-    fun interceptEnumEntry(enumEntry: IrEnumEntry)
+    fun interceptCall(call: IrCall, irFunction: IrFunction, receiver: State?, args: List<State>, defaultAction: () -> Unit)
+    fun interceptConstructor(constructorCall: IrFunctionAccessExpression, receiver: State, args: List<State>, defaultAction: () -> Unit)
+    fun interceptGetObjectValue(expression: IrGetObjectValue, defaultAction: () -> Unit)
+    fun interceptEnumEntry(enumEntry: IrEnumEntry, defaultAction: () -> Unit)
     fun interceptJavaStaticField(expression: IrGetField)
 }
 
@@ -57,7 +57,7 @@ internal class DefaultCallInterceptor(override val interpreter: IrInterpreter) :
         }.wrap(this@DefaultCallInterceptor, expectedResultClass)
     }
 
-    override fun interceptCall(call: IrCall, irFunction: IrFunction, receiver: State?, args: List<State>) {
+    override fun interceptCall(call: IrCall, irFunction: IrFunction, receiver: State?, args: List<State>, defaultAction: () -> Unit) {
         val isInlineOnly = irFunction.hasAnnotation(FqName("kotlin.internal.InlineOnly"))
         val originalCallName = call.symbol.owner.name.asString()
         when {
@@ -69,11 +69,13 @@ internal class DefaultCallInterceptor(override val interpreter: IrInterpreter) :
             irFunction.body is IrSyntheticBody -> handleIntrinsicMethods(irFunction)
             irFunction.body == null ->
                 irFunction.trySubstituteFunctionBody() ?: irFunction.tryCalculateLazyConst() ?: calculateBuiltIns(irFunction, args)
-            else -> callStack.addInstruction(CompoundInstruction(irFunction))
+            else -> defaultAction()
         }
     }
 
-    override fun interceptConstructor(constructorCall: IrFunctionAccessExpression, receiver: State, args: List<State>) {
+    override fun interceptConstructor(
+        constructorCall: IrFunctionAccessExpression, receiver: State, args: List<State>, defaultAction: () -> Unit
+    ) {
         val constructor = constructorCall.symbol.owner
         val irClass = constructor.parentAsClass
         when {
@@ -86,23 +88,23 @@ internal class DefaultCallInterceptor(override val interpreter: IrInterpreter) :
                 callStack.addVariable(Variable(constructor.symbol, KTypeState(constructorCall.type, irBuiltIns.anyClass.owner)))
                 handleIntrinsicMethods(constructor)
             }
-            else -> {
-                callStack.pushState(receiver)
-                callStack.addInstruction(CompoundInstruction(constructor))
-            }
+            else -> defaultAction()
         }
     }
 
-    override fun interceptGetObjectValue(expression: IrGetObjectValue) {
+    override fun interceptGetObjectValue(expression: IrGetObjectValue, defaultAction: () -> Unit) {
         val objectClass = expression.symbol.owner
-        if (objectClass.hasAnnotation(evaluateIntrinsicAnnotation)) {
-            val result = Wrapper.getCompanionObject(objectClass)
-            environment.mapOfObjects[expression.symbol] = result
-            callStack.pushState(result)
+        when {
+            objectClass.hasAnnotation(evaluateIntrinsicAnnotation) -> {
+                val result = Wrapper.getCompanionObject(objectClass)
+                environment.mapOfObjects[expression.symbol] = result
+                callStack.pushState(result)
+            }
+            else -> defaultAction()
         }
     }
 
-    override fun interceptEnumEntry(enumEntry: IrEnumEntry) {
+    override fun interceptEnumEntry(enumEntry: IrEnumEntry, defaultAction: () -> Unit) {
         val enumClass = enumEntry.symbol.owner.parentAsClass
 
         when {
@@ -112,11 +114,7 @@ internal class DefaultCallInterceptor(override val interpreter: IrInterpreter) :
                 Wrapper.getEnumEntry(enumClass)!!.invokeMethod(valueOfFun, listOf(enumEntryName))
                 environment.mapOfEnums[enumEntry.symbol] = callStack.popState() as Complex
             }
-            else -> {
-                val enumSuperCall = (enumClass.primaryConstructor?.body?.statements?.firstOrNull() as? IrEnumConstructorCall)
-                enumSuperCall?.apply { (0 until this.valueArgumentsCount).forEach { putValueArgument(it, null) } } // restore to null
-                callStack.dropSubFrame()
-            }
+            else -> defaultAction()
         }
     }
 
