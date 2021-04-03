@@ -27,15 +27,6 @@ fun testSmartCastInWhenConditionInBranch(x: Any) =
         else -> 1
     }
 
-fun testSmartCastToDifferentTypes(x: Any, y: Any): Int {
-    if (x !is Double) return -1
-    if (y !is Float) return -1
-    return when (x) {
-        y -> 0
-        else -> 1
-    }
-}
-
 fun foo(x: Double) = x
 
 fun testWithPrematureExitInConditionSubexpression(x: Any): Int {

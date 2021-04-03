@@ -93,4 +93,9 @@ object CommonExpressionCheckers : ExpressionCheckers() {
         get() = setOf(
             FirAnonymousFunctionChecker,
         )
+
+    override val equalityOperatorCallCheckers: Set<FirEqualityOperatorCallChecker>
+        get() = setOf(
+            FirEqualityCompatibilityChecker,
+        )
 }

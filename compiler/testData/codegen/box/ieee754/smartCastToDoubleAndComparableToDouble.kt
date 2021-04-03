@@ -7,7 +7,6 @@ fun box(): String {
         if (minus < 0.0) return "fail 0"
         if ((minus) != 0.0) return "fail 1"
         if (minus != 0.0) return "fail 2"
-        if (minus != 0.0F) return "fail 3"
     }
     return "OK"
 }

@@ -12,8 +12,3 @@ fun test3f(x: Float, y: Any) = x == y
 fun test4f(x: Float, y: Number) = x == y
 fun test5f(x: Float, y: Any) = y is Float && x == y
 fun test6f(x: Any, y: Any) = x is Float && y is Float && x == y
-
-// The following possibly should not compile (but so far it does)
-// because of EQUALITY_NOT_APPLICABLE.
-fun testFD(x: Any, y: Any) = x is Float && y is Double && x == y
-fun testDF(x: Any, y: Any) = x is Double && y is Float && x == y
