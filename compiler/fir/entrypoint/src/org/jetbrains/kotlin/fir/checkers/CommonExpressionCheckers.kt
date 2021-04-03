@@ -19,6 +19,7 @@ object CommonExpressionCheckers : ExpressionCheckers() {
             FirCheckNotNullCallChecker,
             FirGetClassCallChecker,
             FirSafeCallExpressionChecker,
+            FirEqualityOperatorCallChecker,
         )
 
     override val qualifiedAccessCheckers: Set<FirQualifiedAccessChecker>

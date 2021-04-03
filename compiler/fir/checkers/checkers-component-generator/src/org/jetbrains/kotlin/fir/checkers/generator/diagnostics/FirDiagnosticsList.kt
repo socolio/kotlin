@@ -355,6 +355,16 @@ object DIAGNOSTICS_LIST : DiagnosticList() {
         val MISPLACED_TYPE_PARAMETER_CONSTRAINTS by warning<KtTypeParameter>()
 
         val DYNAMIC_UPPER_BOUND by error<KtTypeReference>()
+
+        val INCOMPATIBLE_TYPES by error<KtElement> {
+            parameter<ConeKotlinType>("typeA")
+            parameter<ConeKotlinType>("typeB")
+        }
+
+        val INCOMPATIBLE_TYPES_WARNING by warning<KtElement> {
+            parameter<ConeKotlinType>("typeA")
+            parameter<ConeKotlinType>("typeB")
+        }
     }
 
     val REFLECTION by object : DiagnosticGroup("Reflection") {
@@ -687,6 +697,20 @@ object DIAGNOSTICS_LIST : DiagnosticList() {
         val DELEGATE_SPECIAL_FUNCTION_NONE_APPLICABLE by error<KtExpression> {
             parameter<String>("expectedFunctionSignature")
             parameter<Collection<AbstractFirBasedSymbol<*>>>("candidates")
+        }
+        val EQUALITY_NOT_APPLICABLE by error<KtBinaryExpression> {
+            parameter<String>("operator")
+            parameter<ConeKotlinType>("leftType")
+            parameter<ConeKotlinType>("rightType")
+        }
+        val EQUALITY_NOT_APPLICABLE_WARNING by warning<KtBinaryExpression> {
+            parameter<String>("operator")
+            parameter<ConeKotlinType>("leftType")
+            parameter<ConeKotlinType>("rightType")
+        }
+        val INCOMPATIBLE_ENUM_COMPARISON_ERROR by error<KtElement> {
+            parameter<ConeKotlinType>("leftType")
+            parameter<ConeKotlinType>("rightType")
         }
     }
 
