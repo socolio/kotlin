@@ -14,6 +14,9 @@ import org.jetbrains.kotlin.fir.signaturer.FirMangler
 @NoMutableState
 class FirJvmKotlinMangler(private val session: FirSession) : AbstractKotlinMangler<FirDeclaration>(), FirMangler {
 
+    override val manglerName: String
+        get() = super.manglerName
+
     override val FirDeclaration.mangleString: String
         get() = getMangleComputer(MangleMode.FULL).computeMangle(this)
 

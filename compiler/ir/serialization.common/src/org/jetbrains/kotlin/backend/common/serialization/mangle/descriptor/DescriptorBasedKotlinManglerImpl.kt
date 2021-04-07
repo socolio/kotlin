@@ -19,6 +19,9 @@ abstract class DescriptorBasedKotlinManglerImpl : AbstractKotlinMangler<Declarat
     private fun withMode(mode: MangleMode, descriptor: DeclarationDescriptor): String =
         getMangleComputer(mode).computeMangle(descriptor)
 
+    override val manglerName: String
+        get() = super.manglerName
+
     override fun ClassDescriptor.mangleEnumEntryString(): String = withMode(MangleMode.FQNAME, this)
 
     override fun ClassDescriptor.isExportEnumEntry(): Boolean =

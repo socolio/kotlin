@@ -90,6 +90,9 @@ abstract class PSIFunctionKotlinCallArgument(
     override val dataFlowInfoBeforeThisArgument: DataFlowInfo,
     override val argumentName: Name?
 ) : LambdaKotlinCallArgument, PSIKotlinCallArgument() {
+    override val isSpread: Boolean
+        get() = super.isSpread
+
     override val dataFlowInfoAfterThisArgument: DataFlowInfo // todo drop this and use only lambdaInitialDataFlowInfo
         get() = dataFlowInfoBeforeThisArgument
 

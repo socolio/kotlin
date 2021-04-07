@@ -12,6 +12,9 @@ import org.jetbrains.kotlin.ir.declarations.IrDeclaration
 import org.jetbrains.kotlin.ir.util.KotlinMangler
 
 abstract class IrBasedKotlinManglerImpl : AbstractKotlinMangler<IrDeclaration>(), KotlinMangler.IrMangler {
+    override val manglerName: String
+        get() = super.manglerName
+
     override val IrDeclaration.mangleString: String
         get() = getMangleComputer(MangleMode.FULL).computeMangle(this)
 
