@@ -159,6 +159,14 @@ internal class NativeIndexImpl(val library: NativeLibrary, val verbose: Boolean 
 
     private fun getDeclarationId(cursor: CValue<CXCursor>): DeclarationID {
         val usr = clang_getCursorUSR(cursor).convertAndDispose()
+
+        // Different anonymous inner unions/structs may have the same USR
+        // Workaeround: append hashed actual type name
+        if (cursor.spelling.isEmpty()) {
+            val usrExt = "$usr.${cursor.type.name.hashCode().toUInt()}"
+            return DeclarationID.USR(usrExt)
+        }
+
         if (usr == "") {
             val kind = cursor.kind
             val spelling = getCursorSpelling(cursor)
@@ -184,18 +192,13 @@ internal class NativeIndexImpl(val library: NativeLibrary, val verbose: Boolean 
         }
     }
 
-    private fun createStructDecl(cursor: CValue<CXCursor>): StructDeclImpl {
-        val cursorType = clang_getCursorType(cursor)
-        val typeSpelling = clang_getTypeSpelling(cursorType).convertAndDispose()
-
-        return StructDeclImpl(typeSpelling, getLocation(cursor))
-    }
+    private fun createStructDecl(cursor: CValue<CXCursor>): StructDeclImpl =
+            StructDeclImpl(cursor.type.name, getLocation(cursor))
 
     private fun createStructDef(structDecl: StructDeclImpl, cursor: CValue<CXCursor>) {
         val type = clang_getCursorType(cursor)
 
-        val fields = mutableListOf<StructMember>()
-        addDeclaredFields(fields, type, type)
+        val fields = getMembers(cursor)
 
         val size = clang_Type_getSizeOf(type)
         val align = clang_Type_getAlignOf(type).toInt()
@@ -210,47 +213,50 @@ internal class NativeIndexImpl(val library: NativeLibrary, val verbose: Boolean 
         )
 
         structDef.members += fields
-
         structDecl.def = structDef
     }
 
-    private fun addDeclaredFields(result: MutableList<StructMember>, structType: CValue<CXType>, containerType: CValue<CXType>) {
-        getFields(containerType).forEach { fieldCursor ->
-            val name = getCursorSpelling(fieldCursor)
-            if (name.isNotEmpty()) {
-                val fieldType = convertCursorType(fieldCursor)
-                val offset = clang_Type_getOffsetOf(structType, name)
-                val member = if (offset < 0) {
-                    IncompleteField(name, fieldType)
-                } else if (clang_Cursor_isBitField(fieldCursor) == 0) {
-                    val canonicalFieldType = clang_getCanonicalType(clang_getCursorType(fieldCursor))
-                    Field(
-                            name,
-                            fieldType,
-                            offset,
-                            clang_Type_getSizeOf(canonicalFieldType),
-                            clang_Type_getAlignOf(canonicalFieldType)
-                    )
-                } else {
-                    val size = clang_getFieldDeclBitWidth(fieldCursor)
-                    BitField(name, fieldType, offset, size)
-                }
-                result.add(member)
-            } else {
-                // Unnamed field.
-                val fieldType = clang_getCursorType(fieldCursor)
-                when (fieldType.kind) {
-                    CXTypeKind.CXType_Record -> {
-                        // Unnamed struct fields also contribute their fields:
-                        addDeclaredFields(result, structType, fieldType)
+    private fun findNamedParent(cursor: CValue<CXCursor>): CValue<CXCursor> {
+        var parent = cursor
+        while (clang_Cursor_isAnonymous(parent) == 1)
+            parent = clang_getCursorSemanticParent(parent)
+        return parent
+    }
+
+    private fun getMembers(parent: CValue<CXCursor>): List<StructMember> =
+            getFields(clang_getCursorType(parent)).mapNotNull { fieldCursor ->
+                when {
+                    // ??? clang_Cursor_isAnonymous is incorrect when we got a cursor from clang_Type_visitFields - may be a bug
+                    // Workaround is to use fieldCursor.spelling
+                    fieldCursor.spelling.isNotEmpty() -> {
+                        val name = getCursorSpelling(fieldCursor)
+                        val fieldType = convertCursorType(fieldCursor)
+                        val namedParent = findNamedParent(parent)
+                        val offset = clang_Type_getOffsetOf(namedParent.type, name)
+                        if (offset < 0) {
+                            IncompleteField(name, fieldType)
+                        } else if (clang_Cursor_isBitField(fieldCursor) == 0) {
+                            val canonicalFieldType = clang_getCanonicalType(fieldCursor.type)
+                            Field(
+                                    name,
+                                    fieldType,
+                                    offset,
+                                    clang_Type_getSizeOf(canonicalFieldType),
+                                    clang_Type_getAlignOf(canonicalFieldType)
+                            )
+                        } else {
+                            val size = clang_getFieldDeclBitWidth(fieldCursor)
+                            BitField(name, fieldType, offset, size)
+                        }
                     }
-                    else -> {
-                        // Nothing.
+                    fieldCursor.type.kind == CXType_Record -> {
+                        // TODO: clang_Cursor_getOffsetOfField is OK for anonymous, but only for the 1st level of such nesting
+                        AnonymousInnerRecord(convertCursorType(fieldCursor) as RecordType, clang_Cursor_getOffsetOfField(fieldCursor), clang_Type_getSizeOf(fieldCursor.type))
                     }
+                    else ->
+                        null
                 }
             }
-        }
-    }
 
     private fun getEnumDefAt(cursor: CValue<CXCursor>): EnumDefImpl {
         if (clang_isCursorDefinition(cursor) == 0) {

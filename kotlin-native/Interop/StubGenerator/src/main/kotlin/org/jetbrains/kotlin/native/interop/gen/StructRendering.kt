@@ -10,15 +10,16 @@ fun tryRenderStructOrUnion(def: StructDef): String? = when (def.kind) {
 private fun tryRenderStruct(def: StructDef): String? {
     val isPackedStruct = def.fields.any { !it.isAligned }
 
-    var offset = 0L
+    // The only case when offset starts from non-zero is a inner anonymous struct or union
+    var offset = def.members.filterIsInstance<Field>().firstOrNull()?.offsetBytes ?: 0L
 
     return buildString {
         append("struct")
         if (isPackedStruct) append(" __attribute__((packed))")
         append(" { ")
 
-        def.members.forEachIndexed { index, it ->
-            val name = "p$index"
+        def.members.forEach { it ->
+            val name = it.name
             val decl = when (it) {
                 is Field -> {
                     val defaultAlignment = if (isPackedStruct) 1L else it.typeAlign
@@ -32,10 +33,14 @@ private fun tryRenderStruct(def: StructDef): String? {
 
                 is BitField, // TODO: tryRenderVar(it.type, name)?.plus(" : ${it.size}")
                 is IncompleteField -> null // e.g. flexible array member.
+                is AnonymousInnerRecord -> {
+                    offset = it.offset / 8 + it.typeSize
+                    tryRenderVar(it.type, "")
+                }
+
             } ?: return null
             append("$decl; ")
         }
-
         append("}")
     }
 }
@@ -48,18 +53,18 @@ private fun guessAlignment(offset: Long, paddedOffset: Long, defaultAlignment: L
 private fun alignUp(x: Long, alignment: Long): Long = (x + alignment - 1) and ((alignment - 1).inv())
 
 private fun tryRenderUnion(def: StructDef): String? =
-        if (def.members.any { it.offset != 0L }) null else buildString {
+        buildString {
             append("union { ")
-            def.members.forEachIndexed { index, it ->
+            def.members.forEach { it ->
+                val name = it.name
                 val decl = when (it) {
-                    is Field -> tryRenderVar(it.type, "p$index")
+                    is Field -> tryRenderVar(it.type, name)
                     is BitField, is IncompleteField -> null
+                    is AnonymousInnerRecord -> tryRenderVar(it.type, "")
                 } ?: return null
-
                 append("$decl; ")
             }
             append("}")
-
         }
 
 private fun tryRenderVar(type: Type, name: String): String? = when (type) {
