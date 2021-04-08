@@ -28,7 +28,7 @@ private fun tryRenderStruct(def: StructDef): String? {
                     offset = it.offsetBytes + it.typeSize
 
                     tryRenderVar(it.type, name)
-                            ?.plus(if (alignment == defaultAlignment) "" else "__attribute__((aligned($alignment)))")
+                            ?.plus(if (alignment == defaultAlignment) "" else " __attribute__((aligned($alignment)))")
                 }
 
                 is BitField, // TODO: tryRenderVar(it.type, name)?.plus(" : ${it.size}")
