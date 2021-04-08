@@ -8,21 +8,19 @@ fun tryRenderStructOrUnion(def: StructDef): String? = when (def.kind) {
 }
 
 private fun tryRenderStruct(def: StructDef): String? {
-    val isPackedStruct = def.fields.any { !it.isAligned }
-
     // The only case when offset starts from non-zero is a inner anonymous struct or union
     var offset = def.members.filterIsInstance<Field>().firstOrNull()?.offsetBytes ?: 0L
 
     return buildString {
         append("struct")
-        if (isPackedStruct) append(" __attribute__((packed))")
+        if (def.isPacked) append(" __attribute__((packed))")
         append(" { ")
 
         def.members.forEach { it ->
             val name = it.name
             val decl = when (it) {
                 is Field -> {
-                    val defaultAlignment = if (isPackedStruct) 1L else it.typeAlign
+                    val defaultAlignment = if (def.isPacked) 1L else it.typeAlign
                     val alignment = guessAlignment(offset, it.offsetBytes, defaultAlignment) ?: return null
 
                     offset = it.offsetBytes + it.typeSize

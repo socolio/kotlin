@@ -26,10 +26,11 @@ private class StructDeclImpl(spelling: String, override val location: Location) 
 }
 
 private class StructDefImpl(
-        size: Long, align: Int, decl: StructDecl,
+        size: Long, align: Int, isPacked: Boolean,
+        decl: StructDecl,
         override val kind: Kind
 ) : StructDef(
-        size, align, decl
+        size, align, isPacked, decl
 ) {
     override val members = mutableListOf<StructMember>()
 }
@@ -195,6 +196,20 @@ internal class NativeIndexImpl(val library: NativeLibrary, val verbose: Boolean 
     private fun createStructDecl(cursor: CValue<CXCursor>): StructDeclImpl =
             StructDeclImpl(cursor.type.name, getLocation(cursor))
 
+    private fun hasPackedAttribute(cursor: CValue<CXCursor>): Boolean {
+        assert(cursor.kind == CXCursorKind.CXCursor_UnionDecl || cursor.kind == CXCursorKind.CXCursor_StructDecl)
+        var result = false
+        visitChildren(cursor) { child, _ ->
+            if (child.kind == CXCursorKind.CXCursor_PackedAttr) {
+                result = true
+                CXChildVisitResult.CXChildVisit_Break
+            } else {
+                CXChildVisitResult.CXChildVisit_Continue
+            }
+        }
+        return result
+    }
+
     private fun createStructDef(structDecl: StructDeclImpl, cursor: CValue<CXCursor>) {
         val type = clang_getCursorType(cursor)
 
@@ -202,9 +217,10 @@ internal class NativeIndexImpl(val library: NativeLibrary, val verbose: Boolean 
 
         val size = clang_Type_getSizeOf(type)
         val align = clang_Type_getAlignOf(type).toInt()
+        val isPacked = hasPackedAttribute(cursor)
 
         val structDef = StructDefImpl(
-                size, align, structDecl,
+                size, align, isPacked, structDecl,
                 when (cursor.kind) {
                     CXCursorKind.CXCursor_UnionDecl -> StructDef.Kind.UNION
                     CXCursorKind.CXCursor_StructDecl -> StructDef.Kind.STRUCT
@@ -251,7 +267,12 @@ internal class NativeIndexImpl(val library: NativeLibrary, val verbose: Boolean 
                     }
                     fieldCursor.type.kind == CXType_Record -> {
                         // TODO: clang_Cursor_getOffsetOfField is OK for anonymous, but only for the 1st level of such nesting
-                        AnonymousInnerRecord(convertCursorType(fieldCursor) as RecordType, clang_Cursor_getOffsetOfField(fieldCursor), clang_Type_getSizeOf(fieldCursor.type))
+                        AnonymousInnerRecord(
+                                convertCursorType(fieldCursor) as RecordType,
+                                clang_Cursor_getOffsetOfField(fieldCursor),
+                                clang_Type_getSizeOf(fieldCursor.type),
+                                clang_Type_getAlignOf(fieldCursor.type)
+                        )
                     }
                     else ->
                         null

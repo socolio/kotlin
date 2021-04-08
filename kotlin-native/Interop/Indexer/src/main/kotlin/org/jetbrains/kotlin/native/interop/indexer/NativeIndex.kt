@@ -139,7 +139,8 @@ class IncompleteField(name: String, type: Type) : StructMember(name, type) {
     override val offset: Long? get() = null
 }
 
-class AnonymousInnerRecord(type: RecordType, override val offset: Long, val typeSize: Long) : StructMember("", type)
+class AnonymousInnerRecord(type: RecordType, override val offset: Long, val typeSize: Long, val typeAlign: Long)
+    : StructMember("", type)
 
 /**
  * C struct declaration.
@@ -155,7 +156,7 @@ abstract class StructDecl(val spelling: String) : TypeDeclaration {
  * @param hasNaturalLayout must be `false` if the struct has unnatural layout, e.g. it is `packed`.
  * May be `false` even if the struct has natural layout.
  */
-abstract class StructDef(val size: Long, val align: Int, val decl: StructDecl) {
+abstract class StructDef(val size: Long, val align: Int, val isPacked: Boolean, val decl: StructDecl) {
 
     enum class Kind {
         STRUCT, UNION
