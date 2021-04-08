@@ -320,7 +320,7 @@ private fun unfoldDoWhileLoop(loop: IrDoWhileLoop, callStack: CallStack) {
     callStack.newSubFrame(loop, listOf())
     callStack.addInstruction(SimpleInstruction(loop))
     callStack.addInstruction(CompoundInstruction(loop.condition))
-    callStack.addInstruction(CompoundInstruction(loop.body!!))
+    callStack.addInstruction(CompoundInstruction(loop.body))
 }
 
 private fun unfoldWhen(element: IrWhen, callStack: CallStack) {

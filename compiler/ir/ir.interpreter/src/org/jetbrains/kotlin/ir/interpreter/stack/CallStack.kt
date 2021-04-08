@@ -91,14 +91,16 @@ internal class CallStack {
         while (frameOwner != breakOrContinue.loop) {
             when (frameOwner) {
                 is IrTry -> {
+                    getCurrentFrame().removeSubFrameWithoutDataPropagation()
                     addInstruction(CompoundInstruction(breakOrContinue))
-                    addInstruction(SimpleInstruction(frameOwner))
+                    newSubFrame(frameOwner, listOf(SimpleInstruction(frameOwner))) // will be deleted when interpret 'try'
                     return
                 }
                 is IrCatch -> {
                     val tryInstruction = getCurrentFrame().dropInstructions()!! // last instruction in `catch` block is `try`
+                    getCurrentFrame().removeSubFrameWithoutDataPropagation()
                     addInstruction(CompoundInstruction(breakOrContinue))
-                    addInstruction(tryInstruction)
+                    newSubFrame(tryInstruction.element!!, listOf(tryInstruction))  // will be deleted when interpret 'try'
                     return
                 }
                 else -> {
@@ -110,7 +112,12 @@ internal class CallStack {
 
         when (breakOrContinue) {
             is IrBreak -> getCurrentFrame().removeSubFrameWithoutDataPropagation() // drop loop
-            else -> addInstruction(CompoundInstruction(breakOrContinue.loop))
+            else -> if (breakOrContinue.loop is IrDoWhileLoop) {
+                addInstruction(SimpleInstruction(breakOrContinue.loop))
+                addInstruction(CompoundInstruction(breakOrContinue.loop.condition))
+            } else {
+                addInstruction(CompoundInstruction(breakOrContinue.loop))
+            }
         }
     }
 

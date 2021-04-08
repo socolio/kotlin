@@ -112,7 +112,7 @@ internal class SubFrame(private val instructions: MutableList<Instruction>, val 
         return instructions.removeFirst()
     }
 
-    fun dropInstructions() = instructions.firstOrNull()?.apply { instructions.clear() }
+    fun dropInstructions() = instructions.lastOrNull()?.apply { instructions.clear() }
 
     fun pushState(state: State) {
         dataStack.push(state)
