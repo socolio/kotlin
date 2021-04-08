@@ -1,4 +1,4 @@
-<!MANY_IMPL_MEMBER_NOT_IMPLEMENTED!>class IrClassSymbolImpl<!>(descriptor: String? = null) :
+class IrClassSymbolImpl(descriptor: String? = null) :
     IrBindableSymbolBase<String>(descriptor),
     IrClassSymbol
 

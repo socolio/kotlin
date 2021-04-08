@@ -69,7 +69,7 @@ object FirNotImplementedOverrideChecker : FirClassChecker() {
             var abstractCountInInterface = 0
             for (intersectionSymbol in intersections) {
                 val intersection = intersectionSymbol.fir as FirCallableMemberDeclaration
-                val containingClass = intersection.unwrapFakeOverrides().getContainingClass(context) as? FirRegularClass
+                val containingClass = intersection.getContainingClass(context) as? FirRegularClass
                 val hasInterfaceContainer = containingClass?.classKind == ClassKind.INTERFACE
                 if (intersection.modality != Modality.ABSTRACT) {
                     if (hasInterfaceContainer) {
