@@ -1,3 +1,5 @@
+// !LANGUAGE: +AbstractClassMemberNotImplementedWithIntermediateAbstractClass
+
 abstract class ALeft {
     abstract fun foo()
 }

@@ -1,4 +1,4 @@
-// !LANGUAGE: +AbstractClassMemberNotImplementedWithIntermediateAbstractClass
+// !LANGUAGE: -AbstractClassMemberNotImplementedWithIntermediateAbstractClass
 
 abstract class ALeft {
     abstract fun foo()
@@ -12,7 +12,7 @@ interface IRight {
 
 abstract class CAbstract : ALeft(), IRight
 
-<!ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED!>class CDerivedFromAbstract<!> : CAbstract()
+<!ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED_WARNING!>class CDerivedFromAbstract<!> : CAbstract()
 
 interface ILeft {
     fun foo()

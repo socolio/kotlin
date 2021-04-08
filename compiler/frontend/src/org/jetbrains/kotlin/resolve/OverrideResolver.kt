@@ -23,6 +23,7 @@ import com.intellij.util.SmartList
 import com.intellij.util.containers.ContainerUtil
 import com.intellij.util.containers.SmartHashSet
 import org.jetbrains.kotlin.config.LanguageFeature
+import org.jetbrains.kotlin.config.LanguageFeature.AbstractClassMemberNotImplementedWithIntermediateAbstractClass
 import org.jetbrains.kotlin.config.LanguageVersionSettings
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.DELEGATION
@@ -38,10 +39,7 @@ import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.resolve.DescriptorUtils.classCanHaveAbstractFakeOverride
 import org.jetbrains.kotlin.resolve.OverridingUtil.OverrideCompatibilityInfo.Result.OVERRIDABLE
 import org.jetbrains.kotlin.resolve.calls.callResolverUtil.isOrOverridesSynthesized
-import org.jetbrains.kotlin.resolve.descriptorUtil.getKotlinTypeRefiner
-import org.jetbrains.kotlin.resolve.descriptorUtil.module
 import org.jetbrains.kotlin.types.*
-import org.jetbrains.kotlin.types.checker.KotlinTypeChecker
 import org.jetbrains.kotlin.types.checker.KotlinTypeRefiner
 import org.jetbrains.kotlin.types.checker.NewKotlinTypeCheckerImpl
 import org.jetbrains.kotlin.types.refinement.TypeRefinement
@@ -138,7 +136,11 @@ class OverrideResolver(
         override fun doReportErrors() {
             val canHaveAbstractMembers = classCanHaveAbstractFakeOverride(classDescriptor)
             if (abstractInBaseClassNoImpl.isNotEmpty() && !canHaveAbstractMembers) {
-                trace.report(ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED_WARNING.on(klass, klass, abstractInBaseClassNoImpl.first()))
+                if (languageVersionSettings.supportsFeature(AbstractClassMemberNotImplementedWithIntermediateAbstractClass)) {
+                    trace.report(ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED.on(klass, klass, abstractInBaseClassNoImpl.first()))
+                } else {
+                    trace.report(ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED_WARNING.on(klass, klass, abstractInBaseClassNoImpl.first()))
+                }
             }
         }
     }
