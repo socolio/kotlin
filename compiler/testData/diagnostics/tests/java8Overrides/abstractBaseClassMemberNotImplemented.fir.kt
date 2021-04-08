@@ -20,3 +20,6 @@ abstract class AILeft : ILeft
 
 // Should be ERROR
 class AILeftImpl : AILeft(), IRight
+
+// Should be ERROR
+class RightLeft : ILeft, IRight
