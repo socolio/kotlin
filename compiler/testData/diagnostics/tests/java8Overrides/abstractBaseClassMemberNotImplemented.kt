@@ -11,3 +11,12 @@ interface IRight {
 abstract class CAbstract : ALeft(), IRight
 
 <!ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED_WARNING!>class CDerivedFromAbstract<!> : CAbstract()
+
+interface ILeft {
+    fun foo()
+}
+
+abstract class AILeft : ILeft
+
+// Should be ERROR
+<!ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED!>class AILeftImpl<!> : AILeft(), IRight
