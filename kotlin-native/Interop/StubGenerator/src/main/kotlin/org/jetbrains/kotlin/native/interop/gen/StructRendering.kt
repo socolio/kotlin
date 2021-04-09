@@ -14,6 +14,7 @@ private fun tryRenderStruct(def: StructDef): String? {
     return buildString {
         append("struct")
         if (def.isPacked) append(" __attribute__((packed))")
+        if (def.align > 8) (" __attribute__((aligned(${def.align})))") // TODO: use platform-dependent align instead of 8
         append(" { ")
 
         def.members.forEach { it ->
