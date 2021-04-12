@@ -161,13 +161,6 @@ internal class NativeIndexImpl(val library: NativeLibrary, val verbose: Boolean 
     private fun getDeclarationId(cursor: CValue<CXCursor>): DeclarationID {
         val usr = clang_getCursorUSR(cursor).convertAndDispose()
 
-        // Different anonymous inner unions/structs may have the same USR
-        // Workaeround: append hashed actual type name
-        if (cursor.spelling.isEmpty()) {
-            val usrExt = "$usr.${cursor.type.name.hashCode().toUInt()}"
-            return DeclarationID.USR(usrExt)
-        }
-
         if (usr == "") {
             val kind = cursor.kind
             val spelling = getCursorSpelling(cursor)
@@ -189,7 +182,7 @@ internal class NativeIndexImpl(val library: NativeLibrary, val verbose: Boolean 
         val definitionCursor = clang_getCursorDefinition(cursor)
         if (clang_Cursor_isNull(definitionCursor) == 0) {
             assert(clang_isCursorDefinition(definitionCursor) != 0)
-            createStructDef(decl, cursor)
+            createStructDef(decl, definitionCursor)
         }
     }
 
@@ -267,8 +260,11 @@ internal class NativeIndexImpl(val library: NativeLibrary, val verbose: Boolean 
                     }
                     fieldCursor.type.kind == CXType_Record -> {
                         // TODO: clang_Cursor_getOffsetOfField is OK for anonymous, but only for the 1st level of such nesting
+                        val declCursor = clang_getTypeDeclaration(fieldCursor.type)
                         AnonymousInnerRecord(
-                                convertCursorType(fieldCursor) as RecordType,
+                                RecordType(createStructDecl(declCursor).also {
+                                    createStructDef(it, clang_getCursorDefinition(declCursor))
+                                }),
                                 clang_Cursor_getOffsetOfField(fieldCursor),
                                 clang_Type_getSizeOf(fieldCursor.type),
                                 clang_Type_getAlignOf(fieldCursor.type)
