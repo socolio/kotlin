@@ -156,7 +156,7 @@ abstract class StructDecl(val spelling: String) : TypeDeclaration {
  * @param hasNaturalLayout must be `false` if the struct has unnatural layout, e.g. it is `packed`.
  * May be `false` even if the struct has natural layout.
  */
-abstract class StructDef(val size: Long, val align: Int, val isPacked: Boolean, val decl: StructDecl) {
+abstract class StructDef(val size: Long, val align: Int, val decl: StructDecl) {
 
     enum class Kind {
         STRUCT, UNION
@@ -173,7 +173,7 @@ abstract class StructDef(val size: Long, val align: Int, val isPacked: Boolean, 
                 is AnonymousInnerRecord -> result.addAll((it.type as RecordType).decl.def!!.fields)
             }
         }
-    return result
+        return result
     }
     val bitFields: List<BitField> get() = members.filterIsInstance<BitField>()
 }
