@@ -13035,6 +13035,12 @@ public class FirOldFrontendDiagnosticsTestGenerated extends AbstractFirDiagnosti
                 }
 
                 @Test
+                @TestMetadata("errorAfterCompletion.kt")
+                public void testErrorAfterCompletion() throws Exception {
+                    runTest("compiler/testData/diagnostics/tests/inference/completion/errorAfterCompletion.kt");
+                }
+
+                @Test
                 @TestMetadata("flexibleType.kt")
                 public void testFlexibleType() throws Exception {
                     runTest("compiler/testData/diagnostics/tests/inference/completion/flexibleType.kt");
