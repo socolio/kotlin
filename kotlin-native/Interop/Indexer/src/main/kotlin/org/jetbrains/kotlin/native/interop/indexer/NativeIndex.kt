@@ -120,27 +120,27 @@ interface TypeDeclaration {
     val location: Location
 }
 
-sealed class StructMember(val name: String, val type: Type) {
+sealed class StructMember(val name: String) {
     abstract val offset: Long?
 }
 
 /**
  * C struct field.
  */
-class Field(name: String, type: Type, override val offset: Long, val typeSize: Long, val typeAlign: Long)
-    : StructMember(name, type)
+class Field(name: String, val type: Type, override val offset: Long, val typeSize: Long, val typeAlign: Long)
+    : StructMember(name)
 
 val Field.isAligned: Boolean
     get() = offset % (typeAlign * 8) == 0L
 
-class BitField(name: String, type: Type, override val offset: Long, val size: Int) : StructMember(name, type)
+class BitField(name: String, val type: Type, override val offset: Long, val size: Int) : StructMember(name)
 
-class IncompleteField(name: String, type: Type) : StructMember(name, type) {
+class IncompleteField(name: String, val type: Type) : StructMember(name) {
     override val offset: Long? get() = null
 }
 
-class AnonymousInnerRecord(type: RecordType, override val offset: Long, val typeSize: Long, val typeAlign: Long)
-    : StructMember("", type)
+class AnonymousInnerRecord(val def: StructDef, override val offset: Long, val typeSize: Long, val typeAlign: Long)
+    : StructMember("")
 
 /**
  * C struct declaration.
@@ -156,7 +156,7 @@ abstract class StructDecl(val spelling: String) : TypeDeclaration {
  * @param hasNaturalLayout must be `false` if the struct has unnatural layout, e.g. it is `packed`.
  * May be `false` even if the struct has natural layout.
  */
-abstract class StructDef(val size: Long, val align: Int, val decl: StructDecl) {
+abstract class StructDef(val size: Long, val align: Int) {
 
     enum class Kind {
         STRUCT, UNION
@@ -170,7 +170,7 @@ abstract class StructDef(val size: Long, val align: Int, val decl: StructDecl) {
         members.forEach {
             when (it) {
                 is Field -> result.add(it)
-                is AnonymousInnerRecord -> result.addAll((it.type as RecordType).decl.def!!.fields)
+                is AnonymousInnerRecord -> result.addAll(it.def.fields)
             }
         }
         return result

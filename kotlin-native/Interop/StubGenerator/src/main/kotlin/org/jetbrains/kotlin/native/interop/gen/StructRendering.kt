@@ -35,9 +35,8 @@ private fun tryRenderStruct(def: StructDef): String? {
                 is IncompleteField -> null // e.g. flexible array member.
                 is AnonymousInnerRecord -> {
                     offset = it.offset / 8 + it.typeSize
-                    tryRenderVar(it.type, "")
+                    tryRenderStructOrUnion(it.def)
                 }
-
             } ?: return null
             append("$decl; ")
         }
@@ -60,7 +59,7 @@ private fun tryRenderUnion(def: StructDef): String? =
                 val decl = when (it) {
                     is Field -> tryRenderVar(it.type, name)
                     is BitField, is IncompleteField -> null
-                    is AnonymousInnerRecord -> tryRenderVar(it.type, "")
+                    is AnonymousInnerRecord -> tryRenderStructOrUnion(it.def)
                 } ?: return null
                 append("$decl; ")
             }
