@@ -204,9 +204,7 @@ internal class NativeIndexImpl(val library: NativeLibrary, val verbose: Boolean 
     private fun createStructDef(cursor: CValue<CXCursor>, namedParent: CValue<CXCursor>? = null) : StructDefImpl {
         assert(clang_isCursorDefinition(cursor) != 0)
         val type = clang_getCursorType(cursor)
-
         val fields = getMembers(cursor, namedParent)
-
         val size = clang_Type_getSizeOf(type)
         val align = clang_Type_getAlignOf(type).toInt()
 

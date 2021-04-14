@@ -12,10 +12,13 @@ private fun tryRenderStruct(def: StructDef): String? {
     var offset = def.members.filterIsInstance<Field>().firstOrNull()?.offsetBytes ?: 0L
     val isPackedStruct = def.fields.any { !it.isAligned }
 
+    val maxAlign = def.members.filterIsInstance<Field>().maxOfOrNull { it.typeAlign }
+    val forceAlign = maxAlign?.let { def.align > maxAlign } ?: false
+
     return buildString {
         append("struct")
         if (isPackedStruct) append(" __attribute__((packed))")
-        if (def.align > 8) (" __attribute__((aligned(${def.align})))") // TODO: use platform-dependent align instead of 8
+        if (forceAlign) append(" __attribute__((aligned(${def.align})))")
         append(" { ")
 
         def.members.forEach { it ->
