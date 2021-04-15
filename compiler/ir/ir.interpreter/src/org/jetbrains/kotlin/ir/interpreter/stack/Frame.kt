@@ -102,7 +102,8 @@ internal class Frame(subFrame: SubFrame, val irFile: IrFile? = null) {
     }
 }
 
-internal class SubFrame(private val instructions: MutableList<Instruction>, val owner: IrElement) {
+internal class SubFrame(val owner: IrElement) {
+    private val instructions = mutableListOf<Instruction>()
     private val memory = mutableListOf<Variable>()
     private val dataStack = DataStack()
 

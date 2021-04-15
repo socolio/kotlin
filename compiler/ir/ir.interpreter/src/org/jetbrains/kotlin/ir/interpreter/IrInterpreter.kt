@@ -62,18 +62,18 @@ class IrInterpreter private constructor(
     private fun Instruction.handle() {
         when (this) {
             is CompoundInstruction -> unfoldInstruction(this.element, environment)
-            is SimpleInstruction -> interpret(this.element)
+            is SimpleInstruction -> interpret(this.element).also { incrementAndCheckCommands() }
             is CustomInstruction -> this.evaluate()
         }
     }
 
     fun interpret(expression: IrExpression, file: IrFile? = null): IrExpression {
         commandCount = 0
-        callStack.newFrame(expression, listOf(CompoundInstruction(expression)), file)
+        callStack.newFrame(expression, file)
+        callStack.addInstruction(CompoundInstruction(expression))
 
         while (!callStack.hasNoInstructions()) {
             callStack.popInstruction().handle()
-            incrementAndCheckCommands()
         }
 
         return callStack.popState().toIrExpression(expression).apply { callStack.dropFrame() }
@@ -81,8 +81,8 @@ class IrInterpreter private constructor(
 
     internal fun withNewCallStack(call: IrCall, init: IrInterpreter.() -> Any?): State {
         return with(IrInterpreter(environment.copyWithNewCallStack(), bodyMap)) {
-            callStack.newFrame(call.symbol.owner, mutableListOf())
-            callStack.newSubFrame(call, mutableListOf())
+            callStack.newFrame(call.symbol.owner)
+            callStack.newSubFrame(call)
             init()
 
             while (!callStack.hasNoInstructions()) {
@@ -181,7 +181,8 @@ class IrInterpreter private constructor(
         }
 
         callStack.dropSubFrame() // drop intermediate frame that contains variables for default arg evaluation
-        callStack.newFrame(irFunction, mutableListOf(SimpleInstruction(irFunction)))
+        callStack.newFrame(irFunction)
+        callStack.addInstruction(SimpleInstruction(irFunction))
         // TODO: if using KTypeState then it's class must be corresponding
         // `call.type` is used in check cast and emptyArray
         callStack.addVariable(Variable(irFunction.symbol, KTypeState(call.type, irBuiltIns.anyClass.owner)))
@@ -250,7 +251,8 @@ class IrInterpreter private constructor(
         val outerClass = if (irClass.isInner) callStack.getVariable(constructor.dispatchReceiverParameter!!.symbol).state else null
 
         callStack.dropSubFrame()
-        callStack.newFrame(constructor, mutableListOf(SimpleInstruction(constructor)))
+        callStack.newFrame(constructor)
+        callStack.addInstruction(SimpleInstruction(constructor))
         callStack.addVariable(objectVar)
         constructor.valueParameters.forEachIndexed { i, param -> callStack.addVariable(Variable(param.symbol, valueArguments[i])) }
         if (irClass.isLocal) callStack.loadUpValues(objectVar.state as StateWithClosure)
@@ -321,10 +323,10 @@ class IrInterpreter private constructor(
         val result = callStack.popState().asBoolean()
         callStack.dropSubFrame()
         if (result) {
-            callStack.newSubFrame(
-                loop,
-                mutableListOf(CompoundInstruction(loop.body), CompoundInstruction(loop.condition), SimpleInstruction(loop))
-            )
+            callStack.newSubFrame(loop)
+            callStack.addInstruction(SimpleInstruction(loop))
+            callStack.addInstruction(CompoundInstruction(loop.condition))
+            callStack.addInstruction(CompoundInstruction(loop.body))
         }
     }
 
@@ -332,10 +334,10 @@ class IrInterpreter private constructor(
         val result = callStack.popState().asBoolean()
         callStack.dropSubFrame()
         if (result) {
-            callStack.newSubFrame(
-                loop,
-                mutableListOf(CompoundInstruction(loop.body), CompoundInstruction(loop.condition), SimpleInstruction(loop))
-            )
+            callStack.newSubFrame(loop)
+            callStack.addInstruction(SimpleInstruction(loop))
+            callStack.addInstruction(CompoundInstruction(loop.condition))
+            callStack.addInstruction(CompoundInstruction(loop.body))
         }
     }
 
@@ -390,7 +392,8 @@ class IrInterpreter private constructor(
 
             val constructor = objectClass.constructors.first()
             val constructorCall = IrConstructorCallImpl.fromSymbolOwner(constructor.returnType, constructor.symbol)
-            callStack.newSubFrame(constructorCall, mutableListOf(SimpleInstruction(constructorCall)))
+            callStack.newSubFrame(constructorCall)
+            callStack.addInstruction(SimpleInstruction(constructorCall))
         }
     }
 
@@ -422,7 +425,9 @@ class IrInterpreter private constructor(
             val enumClassObject = Variable(enumConstructorCall.getThisReceiver(), Common(enumEntry.correspondingClass ?: enumClass))
             environment.mapOfEnums[enumEntry.symbol] = enumClassObject.state as Complex
 
-            callStack.newSubFrame(enumEntry, mutableListOf(CompoundInstruction(enumConstructorCall), CustomInstruction(cleanEnumSuperCall)))
+            callStack.newSubFrame(enumEntry)
+            callStack.addInstruction(CustomInstruction(cleanEnumSuperCall))
+            callStack.addInstruction(CompoundInstruction(enumConstructorCall))
             callStack.addVariable(enumClassObject)
         }
     }
@@ -531,7 +536,7 @@ class IrInterpreter private constructor(
 
     private fun interpretThrow(expression: IrThrow) {
         val exception = callStack.popState()
-        callStack.newSubFrame(expression, mutableListOf()) // temporary frame to get correct stack trace
+        callStack.newSubFrame(expression) // temporary frame to get correct stack trace
         when (exception) {
             is Common -> callStack.pushState(ExceptionState(exception, callStack.getStackTrace()))
             is Wrapper -> callStack.pushState(ExceptionState(exception, callStack.getStackTrace()))

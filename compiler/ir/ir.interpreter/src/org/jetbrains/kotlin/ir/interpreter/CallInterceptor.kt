@@ -94,14 +94,16 @@ internal class DefaultCallInterceptor(override val interpreter: IrInterpreter) :
                     UNDEFINED_OFFSET, UNDEFINED_OFFSET, invokedFunction.returnType, invokedFunction.symbol as IrSimpleFunctionSymbol
                 )
                 val actualFunction = dispatchReceiver?.getIrFunctionByIrCall(irCall) ?: invokedFunction
-                callStack.newFrame(actualFunction, mutableListOf(SimpleInstruction(actualFunction)))
+                callStack.newFrame(actualFunction)
+                callStack.addInstruction(SimpleInstruction(actualFunction))
                 callStack.addVariable(Variable(actualFunction.symbol, KTypeState(call.type, irBuiltIns.anyClass.owner)))
 
                 actualFunction
             }
             is IrConstructorSymbol -> {
                 val irConstructorCall = IrConstructorCallImpl.fromSymbolOwner(invokedFunction.returnType, symbol)
-                callStack.newSubFrame(irConstructorCall, mutableListOf(SimpleInstruction(irConstructorCall)))
+                callStack.newSubFrame(irConstructorCall)
+                callStack.addInstruction(SimpleInstruction(irConstructorCall))
                 callStack.addVariable(Variable(invokedFunction.parentAsClass.thisReceiver!!.symbol, Common(invokedFunction.parentAsClass)))
 
                 invokedFunction
