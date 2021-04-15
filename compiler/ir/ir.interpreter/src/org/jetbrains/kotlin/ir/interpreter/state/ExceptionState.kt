@@ -115,7 +115,7 @@ internal class ExceptionState private constructor(
             val causeVar = exception.cause?.let {
                 Variable(causeProperty.symbol, ExceptionState(it, irClass, stackTrace + it.stackTrace.reversed().map { "at $it" }))
             }
-            return listOfNotNull(messageVar, causeVar).toMutableList()
+            return causeVar?.let { mutableListOf(messageVar, it) } ?: mutableListOf(messageVar)
         }
 
         private fun evaluateAdditionalStackTrace(e: Throwable): List<String> {

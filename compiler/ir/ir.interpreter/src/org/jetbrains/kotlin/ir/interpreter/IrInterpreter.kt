@@ -115,7 +115,7 @@ class IrInterpreter private constructor(
             is IrEnumEntry -> interpretEnumEntry(element)
             is IrConst<*> -> interpretConst(element)
             is IrVariable -> callStack.addVariable(Variable(element.symbol, callStack.popState()))
-            is IrSetValue -> callStack.getVariable(element.symbol).state = callStack.popState()
+            is IrSetValue -> callStack.setStateBySymbol(element.symbol, callStack.popState())
             is IrTypeOperatorCall -> interpretTypeOperatorCall(element)
             is IrBranch -> interpretBranch(element)
             is IrWhileLoop -> interpretWhile(element)
@@ -169,9 +169,9 @@ class IrInterpreter private constructor(
     private fun interpretCall(call: IrCall) {
         val owner = call.symbol.owner
         // 1. load evaluated arguments from stack
-        var dispatchReceiver = owner.getDispatchReceiver()?.let { callStack.getVariable(it) }?.state
-        val extensionReceiver = owner.getExtensionReceiver()?.let { callStack.getVariable(it) }?.state
-        val valueArguments = owner.valueParameters.map { callStack.getVariable(it.symbol).state }
+        var dispatchReceiver = owner.getDispatchReceiver()?.let { callStack.getStateBySymbol(it) }
+        val extensionReceiver = owner.getExtensionReceiver()?.let { callStack.getStateBySymbol(it) }
+        val valueArguments = owner.valueParameters.map { callStack.getStateBySymbol(it.symbol) }
 
         // 2. get correct function for interpretation
         val irFunction = dispatchReceiver?.getIrFunctionByIrCall(call) ?: call.symbol.owner
@@ -223,7 +223,7 @@ class IrInterpreter private constructor(
             property.backingField?.initializer?.expression ?: return@forEach
             val receiver = irClass.thisReceiver!!.symbol
             if (property.backingField?.initializer != null) {
-                val receiverState = callStack.getVariable(receiver).state
+                val receiverState = callStack.getStateBySymbol(receiver)
                 val propertyVar = Variable(property.symbol, callStack.popState())
                 receiverState.setField(propertyVar)
             }
@@ -233,7 +233,7 @@ class IrInterpreter private constructor(
     private fun interpretField(field: IrField) {
         val irClass = field.parentAsClass
         val receiver = irClass.thisReceiver!!.symbol
-        val receiverState = callStack.getVariable(receiver).state
+        val receiverState = callStack.getStateBySymbol(receiver)
         receiverState.setField(Variable(field.correspondingPropertySymbol!!, callStack.popState()))
     }
 
@@ -244,22 +244,22 @@ class IrInterpreter private constructor(
 
     private fun interpretConstructorCall(constructorCall: IrFunctionAccessExpression) {
         val constructor = constructorCall.symbol.owner
-        val valueArguments = constructor.valueParameters.map { callStack.getVariable(it.symbol).state }
+        val valueArguments = constructor.valueParameters.map { callStack.getStateBySymbol(it.symbol) }
         val irClass = constructor.parentAsClass
-        val objectVar = callStack.getVariable(constructorCall.getThisReceiver())
-        if (irClass.isLocal) callStack.storeUpValues(objectVar.state as StateWithClosure)
-        val outerClass = if (irClass.isInner) callStack.getVariable(constructor.dispatchReceiverParameter!!.symbol).state else null
+        val objectState = callStack.getStateBySymbol(constructorCall.getThisReceiver())
+        if (irClass.isLocal) callStack.storeUpValues(objectState as StateWithClosure)
+        val outerClass = if (irClass.isInner) callStack.getStateBySymbol(constructor.dispatchReceiverParameter!!.symbol) else null
 
         callStack.dropSubFrame()
         callStack.newFrame(constructor)
         callStack.addInstruction(SimpleInstruction(constructor))
-        callStack.addVariable(objectVar)
+        callStack.addVariable(Variable(constructorCall.getThisReceiver(), objectState))
         constructor.valueParameters.forEachIndexed { i, param -> callStack.addVariable(Variable(param.symbol, valueArguments[i])) }
-        if (irClass.isLocal) callStack.loadUpValues(objectVar.state as StateWithClosure)
+        if (irClass.isLocal) callStack.loadUpValues(objectState as StateWithClosure)
 
         if (outerClass != null) {
             val outerClassVar = Variable(irClass.parentAsClass.thisReceiver!!.symbol, outerClass)
-            (objectVar.state as Complex).outerClass = outerClassVar
+            (objectState as Complex).outerClass = outerClassVar
             // used in case when inner class has inner super class
             callStack.addVariable(Variable(constructor.dispatchReceiverParameter!!.symbol, outerClass))
             // used to get information from outer class
@@ -273,10 +273,10 @@ class IrInterpreter private constructor(
             is IrBlock -> (irStatement.statements.last() as IrFunctionAccessExpression).getThisReceiver()
             else -> TODO("${irStatement::class.java} is not supported as first statement in constructor call")
         }
-        superReceiver?.let { callStack.addVariable(Variable(it, objectVar.state)) }
+        superReceiver?.let { callStack.addVariable(Variable(it, objectState)) }
 
-        callInterceptor.interceptConstructor(constructorCall, objectVar.state, valueArguments) {
-            callStack.pushState(objectVar.state)
+        callInterceptor.interceptConstructor(constructorCall, objectState, valueArguments) {
+            callStack.pushState(objectState)
             callStack.addInstruction(CompoundInstruction(constructor))
         }
     }
@@ -352,7 +352,7 @@ class IrInterpreter private constructor(
     private fun interpretSetField(expression: IrSetField) {
         val receiver = (expression.receiver as IrDeclarationReference).symbol
         val propertySymbol = expression.symbol.owner.correspondingPropertySymbol!!
-        callStack.getVariable(receiver).apply { this.state.setField(Variable(propertySymbol, callStack.popState())) }
+        callStack.getStateBySymbol(receiver).apply { this.setField(Variable(propertySymbol, callStack.popState())) }
     }
 
     private fun interpretGetField(expression: IrGetField) {
@@ -377,7 +377,7 @@ class IrInterpreter private constructor(
                 callStack.addInstruction(CompoundInstruction(expression.symbol.owner.initializer?.expression))
             }
             else -> {
-                val result = callStack.getVariable(receiver!!).state.getState(field.correspondingPropertySymbol!!)
+                val result = callStack.getStateBySymbol(receiver!!).getState(field.correspondingPropertySymbol!!)
                 callStack.pushState(result!!)
             }
         }
@@ -436,7 +436,7 @@ class IrInterpreter private constructor(
         val typeClassifier = expression.typeOperand.classifierOrFail
         val isReified = (typeClassifier.owner as? IrTypeParameter)?.isReified == true
         val isErased = typeClassifier.owner is IrTypeParameter && !isReified
-        val typeOperand = if (isReified) (callStack.getVariable(typeClassifier).state as KTypeState).irType else expression.typeOperand
+        val typeOperand = if (isReified) (callStack.getStateBySymbol(typeClassifier) as KTypeState).irType else expression.typeOperand
 
         when (expression.operator) {
             IrTypeOperator.IMPLICIT_COERCION_TO_UNIT -> {
@@ -570,12 +570,12 @@ class IrInterpreter private constructor(
         val function = KFunctionState(reference)
         val irFunction = function.irFunction
 
-        val dispatchReceiver = reference.dispatchReceiver?.let { callStack.getVariable(irFunction.getDispatchReceiver()!!) }?.state
-        val extensionReceiver = reference.extensionReceiver?.let { callStack.getVariable(irFunction.getExtensionReceiver()!!) }?.state
+        val dispatchReceiver = reference.dispatchReceiver?.let { callStack.getStateBySymbol(irFunction.getDispatchReceiver()!!) }
+        val extensionReceiver = reference.extensionReceiver?.let { callStack.getStateBySymbol(irFunction.getExtensionReceiver()!!) }
 
         callStack.dropSubFrame()
-        irFunction.getDispatchReceiver()?.let { dispatchReceiver?.let { receiver -> function.fields.add(Variable(it, receiver)) } }
-        irFunction.getExtensionReceiver()?.let { extensionReceiver?.let { receiver -> function.fields.add(Variable(it, receiver)) } }
+        irFunction.getDispatchReceiver()?.let { dispatchReceiver?.let { receiver -> function.fields += Variable(it, receiver) } }
+        irFunction.getExtensionReceiver()?.let { extensionReceiver?.let { receiver -> function.fields += Variable(it, receiver) } }
 
         if (irFunction.isLocal) callStack.storeUpValues(function)
         callStack.pushState(function)
@@ -585,7 +585,7 @@ class IrInterpreter private constructor(
         val receiverSymbol = propertyReference.getter?.owner?.let { it.getDispatchReceiver() ?: it.getExtensionReceiver() }
         // it is impossible to get KProperty2 through ::, so only one receiver can be not null (or both null)
         val receiver = (propertyReference.dispatchReceiver ?: propertyReference.extensionReceiver)
-            ?.let { callStack.getVariable(receiverSymbol!!) }?.state
+            ?.let { callStack.getStateBySymbol(receiverSymbol!!) }
 
         callStack.dropSubFrame()
         val propertyState = KPropertyState(propertyReference, receiver)
@@ -595,7 +595,7 @@ class IrInterpreter private constructor(
     private fun interpretClassReference(classReference: IrClassReference) {
         when (classReference.symbol) {
             is IrTypeParameterSymbol -> { // reified
-                val kTypeState = callStack.getVariable(classReference.symbol).state as KTypeState
+                val kTypeState = callStack.getStateBySymbol(classReference.symbol) as KTypeState
                 callStack.pushState(KClassState(kTypeState.irType.classOrNull!!.owner, classReference.type.classOrNull!!.owner))
             }
             else -> callStack.pushState(KClassState(classReference))

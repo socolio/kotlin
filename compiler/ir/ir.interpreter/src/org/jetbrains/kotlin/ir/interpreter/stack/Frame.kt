@@ -65,14 +65,23 @@ internal class Frame(subFrame: SubFrame, val irFile: IrFile? = null) {
         getCurrentFrame().addVariable(variable)
     }
 
-    fun getVariable(symbol: IrSymbol): Variable {
+    fun getVariable(symbol: IrSymbol): State {
         return tryToGetVariable(symbol)
             ?: throw InterpreterError("$symbol not found") // TODO better message
     }
 
-    fun containsVariable(symbol: IrSymbol): Boolean = tryToGetVariable(symbol) != null
+    fun setStateBySymbol(symbol: IrSymbol, newState: State) {
+        innerStack.reversed().forEach {
+            if (it.containsVariable(symbol)) {
+                it.setStateBySymbol(symbol, newState)
+                return
+            }
+        }
+    }
 
-    private fun tryToGetVariable(symbol: IrSymbol): Variable? = innerStack.reversed().firstNotNullResult { it.getVariable(symbol) }
+    fun containsVariable(symbol: IrSymbol): Boolean = innerStack.reversed().any { it.containsVariable(symbol) }
+
+    private fun tryToGetVariable(symbol: IrSymbol): State? = innerStack.reversed().firstNotNullResult { it.getStateBySymbol(symbol) }
 
     fun getAll(): List<Variable> = innerStack.flatMap { it.getAll() }
 
@@ -107,6 +116,7 @@ internal class SubFrame(val owner: IrElement) {
     private val memory = mutableListOf<Variable>()
     private val dataStack = DataStack()
 
+    // Methods to work with instruction
     fun isEmpty() = instructions.isEmpty()
 
     fun pushInstruction(instruction: Instruction) {
@@ -119,6 +129,7 @@ internal class SubFrame(val owner: IrElement) {
 
     fun dropInstructions() = instructions.lastOrNull()?.apply { instructions.clear() }
 
+    // Methods to work with data
     fun pushState(state: State) {
         dataStack.push(state)
     }
@@ -126,11 +137,18 @@ internal class SubFrame(val owner: IrElement) {
     fun popState(): State = dataStack.pop()
     fun peekState(): State? = if (!dataStack.isEmpty()) dataStack.peek() else null
 
+    // Methods to work with memory
     fun addVariable(variable: Variable) {
         memory += variable
     }
 
-    fun getVariable(symbol: IrSymbol): Variable? = memory.firstOrNull { it.symbol == symbol }
+    fun containsVariable(symbol: IrSymbol): Boolean = memory.firstOrNull { it.symbol == symbol } != null
+
+    fun getStateBySymbol(symbol: IrSymbol): State? = memory.firstOrNull { it.symbol == symbol }?.state
+    fun setStateBySymbol(symbol: IrSymbol, newState: State) {
+        memory.firstOrNull { it.symbol == symbol }?.state = newState
+    }
+
     fun getAll(): List<Variable> = memory
 }
 

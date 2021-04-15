@@ -21,7 +21,6 @@ import org.jetbrains.kotlin.ir.types.classOrNull
 import org.jetbrains.kotlin.ir.types.classifierOrNull
 import org.jetbrains.kotlin.ir.util.*
 import org.jetbrains.kotlin.utils.addToStdlib.firstNotNullResult
-import kotlin.math.exp
 
 internal fun unfoldInstruction(element: IrElement?, environment: IrInterpreterEnvironment) {
     val callStack = environment.callStack
@@ -217,7 +216,7 @@ private fun unfoldGetValue(expression: IrGetValue, environment: IrInterpreterEnv
         val irGetObject = IrGetObjectValueImpl(UNDEFINED_OFFSET, UNDEFINED_OFFSET, expectedClass.defaultType, expectedClass.symbol)
         return unfoldGetObjectValue(irGetObject, environment)
     }
-    environment.callStack.pushState(environment.callStack.getVariable(expression.symbol).state)
+    environment.callStack.pushState(environment.callStack.getStateBySymbol(expression.symbol))
 }
 
 private fun unfoldGetObjectValue(expression: IrGetObjectValue, environment: IrInterpreterEnvironment) {
