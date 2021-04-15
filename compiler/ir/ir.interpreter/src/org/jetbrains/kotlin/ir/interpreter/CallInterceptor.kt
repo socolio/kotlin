@@ -6,6 +6,7 @@
 package org.jetbrains.kotlin.ir.interpreter
 
 import org.jetbrains.kotlin.ir.IrElement
+import org.jetbrains.kotlin.ir.UNDEFINED_OFFSET
 import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.descriptors.IrBuiltIns
 import org.jetbrains.kotlin.ir.expressions.*
@@ -54,7 +55,9 @@ internal class DefaultCallInterceptor(override val interpreter: IrInterpreter) :
     private val bodyMap: Map<IdSignature, IrBody> = interpreter.bodyMap
 
     override fun interceptProxy(irFunction: IrFunction, valueArguments: List<Variable>, expectedResultClass: Class<*>): Any? {
-        val irCall = IrCallImpl.fromSymbolOwner(0, 0, irFunction.returnType, irFunction.symbol as IrSimpleFunctionSymbol)
+        val irCall = IrCallImpl.fromSymbolOwner(
+            UNDEFINED_OFFSET, UNDEFINED_OFFSET, irFunction.returnType, irFunction.symbol as IrSimpleFunctionSymbol
+        )
         return interpreter.withNewCallStack(irCall) {
             this@withNewCallStack.environment.callStack.addInstruction(SimpleInstruction(irCall))
             valueArguments.forEach { this@withNewCallStack.environment.callStack.addVariable(it) }
@@ -87,16 +90,18 @@ internal class DefaultCallInterceptor(override val interpreter: IrInterpreter) :
 
         val function = when (val symbol = invokedFunction.symbol) {
             is IrSimpleFunctionSymbol -> {
-                val irCall = IrCallImpl.fromSymbolOwner(0, 0, invokedFunction.returnType, invokedFunction.symbol as IrSimpleFunctionSymbol)
+                val irCall = IrCallImpl.fromSymbolOwner(
+                    UNDEFINED_OFFSET, UNDEFINED_OFFSET, invokedFunction.returnType, invokedFunction.symbol as IrSimpleFunctionSymbol
+                )
                 val actualFunction = dispatchReceiver?.getIrFunctionByIrCall(irCall) ?: invokedFunction
-                callStack.newFrame(actualFunction, listOf(SimpleInstruction(actualFunction)))
+                callStack.newFrame(actualFunction, mutableListOf(SimpleInstruction(actualFunction)))
                 callStack.addVariable(Variable(actualFunction.symbol, KTypeState(call.type, irBuiltIns.anyClass.owner)))
 
                 actualFunction
             }
             is IrConstructorSymbol -> {
                 val irConstructorCall = IrConstructorCallImpl.fromSymbolOwner(invokedFunction.returnType, symbol)
-                callStack.newSubFrame(irConstructorCall, listOf(SimpleInstruction(irConstructorCall)))
+                callStack.newSubFrame(irConstructorCall, mutableListOf(SimpleInstruction(irConstructorCall)))
                 callStack.addVariable(Variable(invokedFunction.parentAsClass.thisReceiver!!.symbol, Common(invokedFunction.parentAsClass)))
 
                 invokedFunction

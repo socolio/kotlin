@@ -20,7 +20,7 @@ import org.jetbrains.kotlin.ir.util.fileOrNull
 internal class CallStack {
     private val frames = mutableListOf<Frame>()
     private fun getCurrentFrame() = frames.last()
-    internal fun getCurrentFrameOwner() = frames.last().currentSubFrameOwner
+    internal fun getCurrentFrameOwner() = getCurrentFrame().currentSubFrameOwner
 
     fun newFrame(frameOwner: IrElement, instructions: List<Instruction>, irFile: IrFile? = null) {
         val newFrame = SubFrame(instructions.toMutableList(), frameOwner)
@@ -32,8 +32,8 @@ internal class CallStack {
         frames.add(Frame(newFrame, frameOwner.fileOrNull))
     }
 
-    fun newSubFrame(frameOwner: IrElement, instructions: List<Instruction>) {
-        val newFrame = SubFrame(instructions.toMutableList(), frameOwner)
+    fun newSubFrame(frameOwner: IrElement, instructions: MutableList<Instruction>) {
+        val newFrame = SubFrame(instructions, frameOwner)
         getCurrentFrame().addSubFrame(newFrame)
     }
 
@@ -93,14 +93,14 @@ internal class CallStack {
                 is IrTry -> {
                     getCurrentFrame().removeSubFrameWithoutDataPropagation()
                     addInstruction(CompoundInstruction(breakOrContinue))
-                    newSubFrame(frameOwner, listOf(SimpleInstruction(frameOwner))) // will be deleted when interpret 'try'
+                    newSubFrame(frameOwner, mutableListOf(SimpleInstruction(frameOwner))) // will be deleted when interpret 'try'
                     return
                 }
                 is IrCatch -> {
                     val tryInstruction = getCurrentFrame().dropInstructions()!! // last instruction in `catch` block is `try`
                     getCurrentFrame().removeSubFrameWithoutDataPropagation()
                     addInstruction(CompoundInstruction(breakOrContinue))
-                    newSubFrame(tryInstruction.element!!, listOf(tryInstruction))  // will be deleted when interpret 'try'
+                    newSubFrame(tryInstruction.element!!, mutableListOf(tryInstruction))  // will be deleted when interpret 'try'
                     return
                 }
                 else -> {
@@ -131,7 +131,7 @@ internal class CallStack {
                 when (frameOwner) {
                     is IrTry -> {
                         dropSubFrame()  // drop all instructions that left
-                        newSubFrame(frameOwner, listOf())
+                        newSubFrame(frameOwner, mutableListOf())
                         addInstruction(SimpleInstruction(frameOwner)) // to evaluate finally at the end
                         frameOwner.catches.reversed().forEach { addInstruction(CompoundInstruction(it)) }
                         pushState(exception)

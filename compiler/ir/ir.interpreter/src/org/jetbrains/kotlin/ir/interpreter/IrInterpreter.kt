@@ -81,8 +81,8 @@ class IrInterpreter private constructor(
 
     internal fun withNewCallStack(call: IrCall, init: IrInterpreter.() -> Any?): State {
         return with(IrInterpreter(environment.copyWithNewCallStack(), bodyMap)) {
-            callStack.newFrame(call.symbol.owner, listOf())
-            callStack.newSubFrame(call, listOf())
+            callStack.newFrame(call.symbol.owner, mutableListOf())
+            callStack.newSubFrame(call, mutableListOf())
             init()
 
             while (!callStack.hasNoInstructions()) {
@@ -181,7 +181,7 @@ class IrInterpreter private constructor(
         }
 
         callStack.dropSubFrame() // drop intermediate frame that contains variables for default arg evaluation
-        callStack.newFrame(irFunction, listOf(SimpleInstruction(irFunction)))
+        callStack.newFrame(irFunction, mutableListOf(SimpleInstruction(irFunction)))
         // TODO: if using KTypeState then it's class must be corresponding
         // `call.type` is used in check cast and emptyArray
         callStack.addVariable(Variable(irFunction.symbol, KTypeState(call.type, irBuiltIns.anyClass.owner)))
@@ -250,7 +250,7 @@ class IrInterpreter private constructor(
         val outerClass = if (irClass.isInner) callStack.getVariable(constructor.dispatchReceiverParameter!!.symbol).state else null
 
         callStack.dropSubFrame()
-        callStack.newFrame(constructor, listOf(SimpleInstruction(constructor)))
+        callStack.newFrame(constructor, mutableListOf(SimpleInstruction(constructor)))
         callStack.addVariable(objectVar)
         constructor.valueParameters.forEachIndexed { i, param -> callStack.addVariable(Variable(param.symbol, valueArguments[i])) }
         if (irClass.isLocal) callStack.loadUpValues(objectVar.state as StateWithClosure)
@@ -323,7 +323,7 @@ class IrInterpreter private constructor(
         if (result) {
             callStack.newSubFrame(
                 loop,
-                listOf(CompoundInstruction(loop.body), CompoundInstruction(loop.condition), SimpleInstruction(loop))
+                mutableListOf(CompoundInstruction(loop.body), CompoundInstruction(loop.condition), SimpleInstruction(loop))
             )
         }
     }
@@ -334,7 +334,7 @@ class IrInterpreter private constructor(
         if (result) {
             callStack.newSubFrame(
                 loop,
-                listOf(CompoundInstruction(loop.body), CompoundInstruction(loop.condition), SimpleInstruction(loop))
+                mutableListOf(CompoundInstruction(loop.body), CompoundInstruction(loop.condition), SimpleInstruction(loop))
             )
         }
     }
@@ -390,7 +390,7 @@ class IrInterpreter private constructor(
 
             val constructor = objectClass.constructors.first()
             val constructorCall = IrConstructorCallImpl.fromSymbolOwner(constructor.returnType, constructor.symbol)
-            callStack.newSubFrame(constructorCall, listOf(SimpleInstruction(constructorCall)))
+            callStack.newSubFrame(constructorCall, mutableListOf(SimpleInstruction(constructorCall)))
         }
     }
 
@@ -422,7 +422,7 @@ class IrInterpreter private constructor(
             val enumClassObject = Variable(enumConstructorCall.getThisReceiver(), Common(enumEntry.correspondingClass ?: enumClass))
             environment.mapOfEnums[enumEntry.symbol] = enumClassObject.state as Complex
 
-            callStack.newSubFrame(enumEntry, listOf(CompoundInstruction(enumConstructorCall), CustomInstruction(cleanEnumSuperCall)))
+            callStack.newSubFrame(enumEntry, mutableListOf(CompoundInstruction(enumConstructorCall), CustomInstruction(cleanEnumSuperCall)))
             callStack.addVariable(enumClassObject)
         }
     }
@@ -531,7 +531,7 @@ class IrInterpreter private constructor(
 
     private fun interpretThrow(expression: IrThrow) {
         val exception = callStack.popState()
-        callStack.newSubFrame(expression, listOf()) // temporary frame to get correct stack trace
+        callStack.newSubFrame(expression, mutableListOf()) // temporary frame to get correct stack trace
         when (exception) {
             is Common -> callStack.pushState(ExceptionState(exception, callStack.getStackTrace()))
             is Wrapper -> callStack.pushState(ExceptionState(exception, callStack.getStackTrace()))

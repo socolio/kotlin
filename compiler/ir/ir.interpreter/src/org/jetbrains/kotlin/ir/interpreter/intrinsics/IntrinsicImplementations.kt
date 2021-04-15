@@ -5,6 +5,7 @@
 
 package org.jetbrains.kotlin.ir.interpreter.intrinsics
 
+import org.jetbrains.kotlin.ir.UNDEFINED_OFFSET
 import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrEnumEntry
 import org.jetbrains.kotlin.ir.declarations.IrFunction
@@ -220,8 +221,8 @@ internal object ArrayConstructor : IntrinsicBase() {
         val function = initLambda.irFunction as IrSimpleFunction
         val index = initLambda.irFunction.valueParameters.single()
         for (i in 0 until size) {
-            val call = IrCallImpl.fromSymbolOwner(0, 0, function.returnType, function.symbol)
-            call.putValueArgument(0, IrConstImpl.int(0, 0, index.type, i))
+            val call = IrCallImpl.fromSymbolOwner(UNDEFINED_OFFSET, UNDEFINED_OFFSET, function.returnType, function.symbol)
+            call.putValueArgument(0, IrConstImpl.int(UNDEFINED_OFFSET, UNDEFINED_OFFSET, index.type, i))
             instructions += CompoundInstruction(call)
         }
 
@@ -277,7 +278,7 @@ internal object AssertIntrinsic : IntrinsicBase() {
 
         val messageLambda = environment.callStack.getVariable(irFunction.valueParameters.last().symbol).state as KFunctionState
         val function = messageLambda.irFunction as IrSimpleFunction
-        val call = IrCallImpl.fromSymbolOwner(0, 0, function.returnType, function.symbol)
+        val call = IrCallImpl.fromSymbolOwner(UNDEFINED_OFFSET, UNDEFINED_OFFSET, function.returnType, function.symbol)
 
         return listOf(customEvaluateInstruction(irFunction, environment), CompoundInstruction(call))
     }
