@@ -216,7 +216,7 @@ private fun unfoldGetValue(expression: IrGetValue, environment: IrInterpreterEnv
         val irGetObject = IrGetObjectValueImpl(UNDEFINED_OFFSET, UNDEFINED_OFFSET, expectedClass.defaultType, expectedClass.symbol)
         return unfoldGetObjectValue(irGetObject, environment)
     }
-    environment.callStack.pushState(environment.callStack.getStateBySymbol(expression.symbol))
+    environment.callStack.pushState(environment.callStack.getState(expression.symbol))
 }
 
 private fun unfoldGetObjectValue(expression: IrGetObjectValue, environment: IrInterpreterEnvironment) {

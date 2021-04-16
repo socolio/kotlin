@@ -84,8 +84,8 @@ internal class DefaultCallInterceptor(override val interpreter: IrInterpreter) :
         val invokedFunction = functionState.irFunction
 
         var index = 1 // drop first arg that is reference to function
-        val dispatchReceiver = invokedFunction.dispatchReceiverParameter?.let { functionState.getState(it.symbol) ?: args[index++] }
-        val extensionReceiver = invokedFunction.extensionReceiverParameter?.let { functionState.getState(it.symbol) ?: args[index++] }
+        val dispatchReceiver = invokedFunction.dispatchReceiverParameter?.let { functionState.getField(it.symbol) ?: args[index++] }
+        val extensionReceiver = invokedFunction.extensionReceiverParameter?.let { functionState.getField(it.symbol) ?: args[index++] }
         val valueArguments = invokedFunction.valueParameters.map { args[index++] }
 
         val function = when (val symbol = invokedFunction.symbol) {

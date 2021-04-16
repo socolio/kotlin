@@ -23,9 +23,9 @@ internal class ExceptionState private constructor(
     override var outerClass: Variable? = null
 
     override val message: String?
-        get() = getState(messageProperty.symbol)?.asStringOrNull()
+        get() = getField(messageProperty.symbol)?.asStringOrNull()
     override val cause: Throwable?
-        get() = getState(causeProperty.symbol)?.let { if (it is ExceptionState) it else null }
+        get() = getField(causeProperty.symbol)?.let { if (it is ExceptionState) it else null }
 
     private lateinit var exceptionFqName: String
     private val exceptionHierarchy = mutableListOf<String>()

@@ -259,7 +259,7 @@ internal fun IrFunction?.checkCast(environment: IrInterpreterEnvironment): Boole
     if (actualType.classifierOrNull !is IrTypeParameterSymbol) return true
 
     // TODO expectedType can be missing for functions called as proxy
-    val expectedType = (environment.callStack.getStateBySymbol(this.symbol) as? KTypeState)?.irType ?: return true
+    val expectedType = (environment.callStack.getState(this.symbol) as? KTypeState)?.irType ?: return true
     if (expectedType.classifierOrFail is IrTypeParameterSymbol) return true
 
     val actualState = environment.callStack.peekState() ?: return true
