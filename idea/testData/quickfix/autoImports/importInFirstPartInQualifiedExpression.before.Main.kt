@@ -6,3 +6,5 @@ package testing
 fun testing() {
   <caret>Some.test()
 }
+
+/* FIR_COMPARISON */

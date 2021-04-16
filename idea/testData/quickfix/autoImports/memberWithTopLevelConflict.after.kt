@@ -9,3 +9,4 @@ import p1.sleep
 fun usage() {
     sleep<caret>()
 }
+/* FIR_COMPARISON */

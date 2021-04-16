@@ -6,3 +6,5 @@ import importTrait.data.TestTrait
 fun test() {
     val a = <caret>TestTrait
 }
+
+/* FIR_COMPARISON */

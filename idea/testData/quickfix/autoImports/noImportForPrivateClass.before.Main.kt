@@ -9,3 +9,4 @@
 fun test() {
     <caret>PrivateClass
 }
+/* FIR_COMPARISON */

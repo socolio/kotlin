@@ -8,3 +8,5 @@ import functionimporttest.data.someTestFun
 fun functionImportTest() {
     someTestFun()
 }
+
+/* FIR_COMPARISON */

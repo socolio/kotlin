@@ -7,3 +7,4 @@ import RootClass
 fun test() {
     RootClass()
 }
+/* FIR_COMPARISON */

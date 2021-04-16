@@ -11,3 +11,4 @@ import p2.receiveSomeCtor
 fun some() {
     receiveSomeCtor(::Some<caret>)
 }
+/* FIR_COMPARISON */

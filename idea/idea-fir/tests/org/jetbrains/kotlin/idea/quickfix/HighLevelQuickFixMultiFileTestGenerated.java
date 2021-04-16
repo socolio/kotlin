@@ -219,6 +219,11 @@ public class HighLevelQuickFixMultiFileTestGenerated extends AbstractHighLevelQu
         runTest("idea/testData/quickfix/autoImports/noImportForPrivateClass.before.Main.kt");
     }
 
+    @TestMetadata("noImportForPrivateFunction.before.Main.kt")
+    public void testNoImportForPrivateFunction() throws Exception {
+        runTest("idea/testData/quickfix/autoImports/noImportForPrivateFunction.before.Main.kt");
+    }
+
     @TestMetadata("noImportInImports.before.Main.kt")
     public void testNoImportInImports() throws Exception {
         runTest("idea/testData/quickfix/autoImports/noImportInImports.before.Main.kt");

@@ -5,3 +5,4 @@ package non.root.name
 fun test() {
     RootClass<caret>()
 }
+/* FIR_COMPARISON */

@@ -9,3 +9,5 @@ package packageClass
 fun functionImportTest() {
     <caret>FooPackage()
 }
+
+/* FIR_COMPARISON */

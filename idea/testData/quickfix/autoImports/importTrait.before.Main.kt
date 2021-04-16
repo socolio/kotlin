@@ -4,3 +4,5 @@
 fun test() {
     val a = <caret>TestTrait
 }
+
+/* FIR_COMPARISON */

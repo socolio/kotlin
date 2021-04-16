@@ -2,3 +2,4 @@
 // ERROR: Unresolved reference: NotExcludedClass
 
 val x = <caret>NotExcludedClass()
+/* FIR_COMPARISON */

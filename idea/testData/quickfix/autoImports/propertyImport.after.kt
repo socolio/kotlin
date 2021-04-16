@@ -8,3 +8,5 @@ import test.data.someTestProp
 fun foo() {
     someTestProp
 }
+
+/* FIR_COMPARISON */

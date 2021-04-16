@@ -6,3 +6,5 @@ package functionimporttest
 fun functionImportTest() {
     <caret>someTestFun()
 }
+
+/* FIR_COMPARISON */

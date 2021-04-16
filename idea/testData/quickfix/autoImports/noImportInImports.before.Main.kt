@@ -10,3 +10,4 @@
 package testing
 
 import testing.<caret>SomeTest
+/* FIR_COMPARISON */

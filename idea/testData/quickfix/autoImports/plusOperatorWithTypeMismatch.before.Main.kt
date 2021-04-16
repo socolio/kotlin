@@ -11,3 +11,4 @@ class JustClass
 fun some() {
     val x = JustClass() +<caret> 1
 }
+/* FIR_COMPARISON */

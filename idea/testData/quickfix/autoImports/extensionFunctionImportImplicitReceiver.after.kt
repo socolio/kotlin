@@ -7,3 +7,5 @@ import testingExtensionFunctionsImport.data.someFun
 fun String.some() {
     <caret>someFun()
 }
+
+/* FIR_COMPARISON */

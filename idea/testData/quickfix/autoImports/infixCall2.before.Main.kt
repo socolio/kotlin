@@ -11,3 +11,4 @@ interface H
 fun f(h: H) {
     h <caret>foo h
 }
+/* FIR_COMPARISON */

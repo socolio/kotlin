@@ -8,3 +8,5 @@
 package testing
 
 val x = testing.<caret>SomeTest()
+
+/* FIR_COMPARISON */

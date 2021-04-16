@@ -6,3 +6,5 @@ import TestData.TestSample
 fun test() {
     val a = TestSample
 }
+
+/* FIR_COMPARISON */

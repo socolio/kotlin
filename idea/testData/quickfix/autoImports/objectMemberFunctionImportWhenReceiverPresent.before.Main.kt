@@ -7,3 +7,4 @@ class A {
         foobar<caret>()
     }
 }
+/* FIR_COMPARISON */

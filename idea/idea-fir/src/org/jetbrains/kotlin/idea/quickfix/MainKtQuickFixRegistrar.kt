@@ -11,6 +11,8 @@ import org.jetbrains.kotlin.idea.fir.api.fixes.KtQuickFixesListBuilder
 import org.jetbrains.kotlin.idea.frontend.api.fir.diagnostics.KtFirDiagnostic
 import org.jetbrains.kotlin.idea.quickfix.fixes.*
 import org.jetbrains.kotlin.idea.quickfix.fixes.InitializePropertyQuickFixFactory
+import org.jetbrains.kotlin.idea.quickfix.fixes.ChangeTypeQuickFix
+import org.jetbrains.kotlin.idea.quickfix.fixes.ReplaceCallFixFactories
 
 class MainKtQuickFixRegistrar : KtQuickFixRegistrar() {
     private val modifiers = KtQuickFixesListBuilder.registerPsiQuickFix {
@@ -72,6 +74,10 @@ class MainKtQuickFixRegistrar : KtQuickFixRegistrar() {
         registerApplicator(ChangeTypeQuickFix.changeVariableReturnTypeOnOverride)
     }
 
+    private val imports = KtQuickFixesListBuilder.registerPsiQuickFix {
+        registerApplicator(ImportQuickFix.FACTORY)
+    }
+
     private val mutability = KtQuickFixesListBuilder.registerPsiQuickFix {
         registerPsiQuickFixes(KtFirDiagnostic.VarOverriddenByVal::class, ChangeVariableMutabilityFix.VAR_OVERRIDDEN_BY_VAL_FACTORY)
         registerPsiQuickFixes(KtFirDiagnostic.VarAnnotationParameter::class, ChangeVariableMutabilityFix.VAR_ANNOTATION_PARAMETER_FACTORY)
@@ -90,6 +96,7 @@ class MainKtQuickFixRegistrar : KtQuickFixRegistrar() {
         modifiers,
         propertyInitialization,
         overrides,
+        imports,
         mutability,
         expressions,
     )

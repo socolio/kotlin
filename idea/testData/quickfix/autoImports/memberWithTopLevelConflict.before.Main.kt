@@ -7,3 +7,4 @@
 fun usage() {
     sleep<caret>()
 }
+/* FIR_COMPARISON */

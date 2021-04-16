@@ -5,3 +5,5 @@ package testingExtensionFunctionsImport
 fun String.some() {
     <caret>someFun()
 }
+
+/* FIR_COMPARISON */

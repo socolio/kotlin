@@ -4,3 +4,4 @@
 package ccc
 
 val x = <caret>TestObject
+/* FIR_COMPARISON */

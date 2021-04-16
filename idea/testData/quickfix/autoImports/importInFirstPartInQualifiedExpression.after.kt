@@ -8,3 +8,5 @@ import some.Some
 fun testing() {
   <caret>Some.test()
 }
+
+/* FIR_COMPARISON */

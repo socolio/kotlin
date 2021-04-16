@@ -6,3 +6,4 @@ package ccc
 import bbb.TestObject
 
 val x = TestObject
+/* FIR_COMPARISON */

@@ -6,3 +6,5 @@ package testing
 fun some() {
   testing.<caret>externalFun()
 }
+
+/* FIR_COMPARISON */

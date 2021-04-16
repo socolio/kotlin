@@ -6,3 +6,5 @@ package test
 fun foo() {
     <caret>someTestProp
 }
+
+/* FIR_COMPARISON */

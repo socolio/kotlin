@@ -6,3 +6,4 @@ import ppp.XXX
 fun f() {
     XXX { 1 }
 }
+/* FIR_COMPARISON */
