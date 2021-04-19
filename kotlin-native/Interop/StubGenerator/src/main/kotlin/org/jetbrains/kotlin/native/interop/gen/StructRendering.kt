@@ -9,8 +9,14 @@ fun tryRenderStructOrUnion(def: StructDef): String? = when (def.kind) {
 
 private fun tryRenderStruct(def: StructDef): String? {
     // The only case when offset starts from non-zero is a inner anonymous struct or union
-    var offset = def.members.filterIsInstance<Field>().firstOrNull()?.offsetBytes ?: 0L
-    val isPackedStruct = def.fields.any { !it.isAligned }
+    val baseOffset = def.members.filterIsInstance<Field>().firstOrNull()?.offsetBytes ?: 0L
+    var offset = 0L
+
+    // Members of anonymous struct/union are the fields of enclosing named aggregate and has the corresponding offset.
+    // However for the purpose of alignment heuristic we use "immediate" offset, i.e. relative to the immediate parent.
+    // Consider for ex. a packed struct containing not packed anonymous inner: their fields are not aligned relative to the root.
+    val isPackedStruct = def.fields.any { it.offsetBytes - baseOffset % it.typeAlign != 0L}
+
 
     val maxAlign = def.members.filterIsInstance<Field>().maxOfOrNull { it.typeAlign }
     val forceAlign = maxAlign?.let { def.align > maxAlign } ?: false
@@ -26,9 +32,9 @@ private fun tryRenderStruct(def: StructDef): String? {
             val decl = when (it) {
                 is Field -> {
                     val defaultAlignment = if (isPackedStruct) 1L else it.typeAlign
-                    val alignment = guessAlignment(offset, it.offsetBytes, defaultAlignment) ?: return null
 
-                    offset = it.offsetBytes + it.typeSize
+                    val alignment = guessAlignment(offset, it.offsetBytes - baseOffset, defaultAlignment) ?: return null
+                    offset = it.offsetBytes - baseOffset + it.typeSize
 
                     tryRenderVar(it.type, name)
                             ?.plus(if (alignment == defaultAlignment) "" else " __attribute__((aligned($alignment)))")
@@ -37,7 +43,7 @@ private fun tryRenderStruct(def: StructDef): String? {
                 is BitField, // TODO: tryRenderVar(it.type, name)?.plus(" : ${it.size}")
                 is IncompleteField -> null // e.g. flexible array member.
                 is AnonymousInnerRecord -> {
-                    offset = it.offset / 8 + it.typeSize
+                    offset = it.offsetBytes - baseOffset + it.typeSize
                     tryRenderStructOrUnion(it.def)
                 }
             } ?: return null
@@ -85,6 +91,11 @@ private fun tryRenderVar(type: Type, name: String): String? = when (type) {
 }
 
 private val Field.offsetBytes: Long get() {
+    require(this.offset % 8 == 0L)
+    return this.offset / 8
+}
+
+private val AnonymousInnerRecord.offsetBytes: Long get() {
     require(this.offset % 8 == 0L)
     return this.offset / 8
 }
