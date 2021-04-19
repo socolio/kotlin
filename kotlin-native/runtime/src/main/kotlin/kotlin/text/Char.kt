@@ -239,11 +239,21 @@ external public actual fun Char.isHighSurrogate(): Boolean
 @SymbolName("Kotlin_Char_isLowSurrogate")
 external public actual fun Char.isLowSurrogate(): Boolean
 
+@SharedImmutable
+private val digits = intArrayOf(
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+    -1, -1, -1, -1, -1, -1, -1,
+    10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+    20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
+    30, 31, 32, 33, 34, 35,
+    -1, -1, -1, -1, -1, -1,
+    10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+    20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
+    30, 31, 32, 33, 34, 35
+)
 
 internal actual fun digitOf(char: Char, radix: Int): Int = when {
-    char >= '0' && char <= '9' -> char - '0'
-    char >= 'A' && char <= 'Z' -> char - 'A' + 10
-    char >= 'a' && char <= 'z' -> char - 'a' + 10
+    char >= '0' && char <= 'z' -> digits[char - '0']
     char < '\u0080' -> -1
     else -> char.digitToIntImpl()
 }.let { if (it >= radix) -1 else it }
