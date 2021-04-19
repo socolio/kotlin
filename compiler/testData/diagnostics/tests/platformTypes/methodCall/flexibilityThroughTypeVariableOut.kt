@@ -17,5 +17,5 @@ fun takeConvertor(c: Convertor<String, String>) {}
 class Out<out T> {}
 
 fun main(o: Out<Nothing?>) {
-    takeConvertor(Convertor { o })
+    takeConvertor(Convertor { <!ARGUMENT_TYPE_MISMATCH!>o<!> })
 }

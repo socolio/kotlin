@@ -13,6 +13,6 @@ fun <T: Closeable, R> T.foo(block: (T, T)-> R) = block
 fun main() {
     C().foo { // no ambiguity here
         www ->
-        <!UNRESOLVED_REFERENCE!>xs<!>
+        <!ARGUMENT_TYPE_MISMATCH, UNRESOLVED_REFERENCE!>xs<!>
     }
 }

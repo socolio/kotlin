@@ -31,8 +31,8 @@ fun <K, L : K> rest() {
     val o3 = S<L, L>()
 
     val o4 = S<S<K, L>, T<K, L>>()
-    val o5 = S<S<K, L>, <!UPPER_BOUND_VIOLATED!>T<K, K><!>>()
-    val o5 = S<S<L, L>, <!UPPER_BOUND_VIOLATED!>T<K, L><!>>()
+    val o5 = S<S<K, L>, <!UPPER_BOUND_VIOLATED, UPPER_BOUND_VIOLATED!>T<K, K><!>>()
+    val o5 = S<S<L, L>, <!UPPER_BOUND_VIOLATED, UPPER_BOUND_VIOLATED!>T<K, L><!>>()
 
     val o6 = S<Any, <!UPPER_BOUND_VIOLATED!>T<S<K, L>, String><!>>()
     val o7 = S<Any, T<S<K, L>, Nothing>>()

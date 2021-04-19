@@ -3,7 +3,7 @@
 
 import kotlin.reflect.KProperty
 
-val c: Int by Delegate()
+val c: Int by <!TYPE_MISMATCH!>Delegate()<!>
 
 class Delegate {
   operator fun getValue(t: Any?, p: KProperty<*>): String {

@@ -12,7 +12,7 @@ class Foo {
 
 fun main() {
     with("", {
-        Foo.<!UNRESOLVED_REFERENCE!>findByName<!>("")
+        <!ARGUMENT_TYPE_MISMATCH!>Foo.<!UNRESOLVED_REFERENCE!>findByName<!>("")<!>
     })
     with(Foo) {
         findByName("")

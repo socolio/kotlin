@@ -15,5 +15,5 @@ public interface Convertor<Src, Dst> {
 fun takeConvertor(c: Convertor<String, String>) {}
 
 fun main() {
-    takeConvertor(Convertor { null })
+    takeConvertor(Convertor { <!ARGUMENT_TYPE_MISMATCH!>null<!> })
 }
