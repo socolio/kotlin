@@ -255,6 +255,16 @@ object DIAGNOSTICS_LIST : DiagnosticList() {
         val NAMED_PARAMETER_NOT_FOUND by error<KtValueArgument>(PositioningStrategy.NAME_OF_NAMED_ARGUMENT) {
             parameter<String>("name")
         }
+
+        val ASSIGNMENT_TYPE_MISMATCH by error<KtExpression> {
+            parameter<ConeKotlinType>("expected")
+            parameter<ConeKotlinType>("actual")
+        }
+
+        val RESULT_TYPE_MISMATCH by error<KtExpression> {
+            parameter<ConeKotlinType>("expected")
+            parameter<ConeKotlinType>("actual")
+        }
     }
 
     val AMBIGUITY by object : DiagnosticGroup("Ambiguity") {

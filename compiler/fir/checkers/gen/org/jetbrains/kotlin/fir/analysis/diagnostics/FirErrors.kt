@@ -212,6 +212,8 @@ object FirErrors {
     val TOO_MANY_ARGUMENTS by error1<PsiElement, FirCallableDeclaration<*>>()
     val NO_VALUE_FOR_PARAMETER by error1<KtElement, FirValueParameter>(SourceElementPositioningStrategies.VALUE_ARGUMENTS)
     val NAMED_PARAMETER_NOT_FOUND by error1<KtValueArgument, String>(SourceElementPositioningStrategies.NAME_OF_NAMED_ARGUMENT)
+    val ASSIGNMENT_TYPE_MISMATCH by error2<KtExpression, ConeKotlinType, ConeKotlinType>()
+    val RESULT_TYPE_MISMATCH by error2<KtExpression, ConeKotlinType, ConeKotlinType>()
 
     // Ambiguity
     val OVERLOAD_RESOLUTION_AMBIGUITY by error1<PsiElement, Collection<AbstractFirBasedSymbol<*>>>(SourceElementPositioningStrategies.REFERENCE_BY_QUALIFIED)
