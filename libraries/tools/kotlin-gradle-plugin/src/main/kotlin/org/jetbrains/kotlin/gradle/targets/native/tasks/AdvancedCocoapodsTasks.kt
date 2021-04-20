@@ -483,7 +483,7 @@ open class PodBuildTask : DefaultTask() {
 
     @get:PathSensitive(PathSensitivity.ABSOLUTE)
     @get:InputFile
-    internal lateinit var buildSettingsFile: Provider<File>
+    lateinit var buildSettingsFile: Provider<File>
 
     @get:Nested
     internal lateinit var pod: Provider<CocoapodsDependency>
@@ -533,10 +533,10 @@ open class PodBuildTask : DefaultTask() {
 }
 
 
-internal data class PodBuildSettingsProperties(
+data class PodBuildSettingsProperties(
     internal val buildDir: String,
     internal val configuration: String,
-    internal val configurationBuildDir: String,
+    val configurationBuildDir: String,
     internal val podsTargetSrcRoot: String,
     internal val cflags: String? = null,
     internal val headerPaths: String? = null,

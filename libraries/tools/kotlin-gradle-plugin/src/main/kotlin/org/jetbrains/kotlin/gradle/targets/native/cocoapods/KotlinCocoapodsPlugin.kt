@@ -75,7 +75,7 @@ private fun String.toSetupBuildTaskName(pod: CocoapodsDependency): String = lowe
     this
 )
 
-private fun String.toBuildDependenciesTaskName(pod: CocoapodsDependency): String = lowerCamelCaseName(
+fun String.toBuildDependenciesTaskName(pod: CocoapodsDependency): String = lowerCamelCaseName(
     KotlinCocoapodsPlugin.POD_BUILD_TASK_NAME,
     pod.name.asValidTaskName(),
     this
@@ -88,11 +88,11 @@ private val CocoapodsDependency.toPodDownloadTaskName: String
     )
 
 open class KotlinCocoapodsPlugin : Plugin<Project> {
-    private fun KotlinMultiplatformExtension.supportedTargets() = targets
+    fun KotlinMultiplatformExtension.supportedTargets() = targets
         .withType(KotlinNativeTarget::class.java)
         .matching { it.konanTarget.family.isAppleFamily }
 
-    private val KotlinNativeTarget.toValidSDK: String
+    val KotlinNativeTarget.toValidSDK: String
         get() = when (konanTarget) {
             IOS_X64 -> "iphonesimulator"
             IOS_ARM32, IOS_ARM64 -> "iphoneos"
@@ -517,7 +517,6 @@ open class KotlinCocoapodsPlugin : Plugin<Project> {
     }
 
     override fun apply(project: Project): Unit = with(project) {
-
         pluginManager.withPlugin("kotlin-multiplatform") {
             val kotlinExtension = project.multiplatformExtension
             val cocoapodsExtension = CocoapodsExtension(this)
