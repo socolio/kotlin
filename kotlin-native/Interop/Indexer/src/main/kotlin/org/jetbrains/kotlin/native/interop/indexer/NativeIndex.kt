@@ -175,7 +175,17 @@ abstract class StructDef(val size: Long, val align: Int) {
         }
         return result
     }
-    val bitFields: List<BitField> get() = members.filterIsInstance<BitField>()
+
+    val bitFields: List<BitField> get() {
+        val result = mutableListOf<BitField>()
+        members.forEach {
+            when (it) {
+                is BitField -> result.add(it)
+                is AnonymousInnerRecord -> result.addAll(it.def.bitFields)
+            }
+        }
+        return result
+    }
 }
 
 /**

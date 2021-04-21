@@ -184,6 +184,7 @@ internal class NativeIndexImpl(val library: NativeLibrary, val verbose: Boolean 
         }
     }
 
+
     private fun createStructDecl(cursor: CValue<CXCursor>): StructDeclImpl =
             StructDeclImpl(cursor.type.name, getLocation(cursor))
 
@@ -215,7 +216,7 @@ internal class NativeIndexImpl(val library: NativeLibrary, val verbose: Boolean 
                     CXCursorKind.CXCursor_StructDecl -> StructDef.Kind.STRUCT
                     else -> error(cursor.kind)
                 }
-        ).also {it.members += fields }
+        ).also { it.members += fields }
     }
 
     private fun getMembers(parent: CValue<CXCursor>, namedParent: CValue<CXCursor>? = null): List<StructMember> =
@@ -223,7 +224,7 @@ internal class NativeIndexImpl(val library: NativeLibrary, val verbose: Boolean 
                 // clang_Cursor_isAnonymous is always false for a fieldCursor. Use declaration cursor
                 val declCursor = clang_getTypeDeclaration(fieldCursor.type)
                 val isAnonymous = clang_Cursor_isAnonymous(declCursor) == 1
-                val offsetRoot = namedParent?. let { it } ?: parent
+                val offsetRoot = namedParent ?: parent
                 when {
                     isAnonymous -> {
                         assert(fieldCursor.type.kind == CXType_Record)
@@ -243,6 +244,7 @@ internal class NativeIndexImpl(val library: NativeLibrary, val verbose: Boolean 
                             IncompleteField(name, fieldType)
                         } else if (clang_Cursor_isBitField(fieldCursor) == 0) {
                             val canonicalFieldType = clang_getCanonicalType(fieldCursor.type)
+                            println("getMembers> parent = ${parent.spelling}: field ${fieldCursor.spelling}; type ${canonicalFieldType.name}; offset = $offset, immediateOffset = ${clang_Cursor_getOffsetOfField(fieldCursor)}")
                             Field(
                                     name,
                                     fieldType,
