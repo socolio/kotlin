@@ -45,7 +45,7 @@ abstract class KtAnalysisSession(final override val token: ValidityToken) : Vali
 
     override val analysisSession: KtAnalysisSession get() = this
 
-    abstract fun createContextDependentCopy(originalKtFile: KtFile, fakeKtElement: KtElement): KtAnalysisSession
+    abstract fun createContextDependentCopy(originalKtFile: KtFile, dependencyKtElement: KtElement): KtAnalysisSession
 
     internal val smartCastProvider: KtSmartCastProvider get() = smartCastProviderImpl
     protected abstract val smartCastProviderImpl: KtSmartCastProvider
