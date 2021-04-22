@@ -6,11 +6,14 @@
 package org.jetbrains.kotlin.fir.analysis.types
 
 import org.jetbrains.kotlin.descriptors.Modality
+import org.jetbrains.kotlin.fir.FirSession
+import org.jetbrains.kotlin.fir.analysis.checkers.toClass
+import org.jetbrains.kotlin.fir.analysis.checkers.toRegularClass
+import org.jetbrains.kotlin.fir.analysis.types.ConeTypeCompatibilityChecker.Compatibility.*
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.isPrimitiveType
+import org.jetbrains.kotlin.fir.resolve.fullyExpandedType
 import org.jetbrains.kotlin.fir.resolve.getSymbolByLookupTag
-import org.jetbrains.kotlin.fir.resolve.symbolProvider
-import org.jetbrains.kotlin.fir.symbols.ConeClassLikeLookupTag
 import org.jetbrains.kotlin.fir.symbols.ConeTypeParameterLookupTag
 import org.jetbrains.kotlin.fir.symbols.impl.FirTypeParameterSymbol
 import org.jetbrains.kotlin.fir.types.*
@@ -20,7 +23,8 @@ import org.jetbrains.kotlin.types.Variance
 /**
  * Checks if a given collection of [ConeKotlinType] are compatible. In other words, the types are compatible if it's possible at all to
  * define a type that's a subtype of all of the given types. The compatibility of a given set of types concept is closely related to whether
- * the intersection of these types is inhabited. But it's not identical because 1) one can manually control visibility of constructors and
+ * the intersection of these types is inhabited. But it's not identical because
+ * 1) one can manually control visibility of constructors and
  * 2) there can be unused type parameters.
  *
  * The compatibility check is done recursively on the given types and all type arguments passed to each corresponding type parameters. For
@@ -62,10 +66,11 @@ internal object ConeTypeCompatibilityChecker {
     }
 
     fun Collection<ConeKotlinType>.areCompatible(ctx: ConeInferenceContext): Compatibility {
+        if (size <= 1) return COMPATIBLE
         // If all types are nullable, then `null` makes the given types compatible.
-        if (all { with(ctx) { it.isNullableType() } }) return Compatibility.COMPATIBLE
+        if (all { with(ctx) { it.isNullableType() } }) return COMPATIBLE
         // Next can simply focus on the type hierarchy and don't need to worry about nullability.
-        return ctx.areCompatible(flatMap { it.collectUpperBounds() }.toSet(), emptySet(), Compatibility.HARD_INCOMPATIBLE)
+        return ctx.areCompatible(flatMap { it.collectUpperBounds() }.toSet(), emptySet(), HARD_INCOMPATIBLE)
     }
 
     /**
@@ -81,31 +86,30 @@ internal object ConeTypeCompatibilityChecker {
         lowerBounds: Set<ConeClassLikeType>,
         compatibilityUpperBound: Compatibility
     ): Compatibility {
-        val upperBoundClasses: Set<ConcreteClass> = upperBounds.mapNotNull { it.toConcreteClass(this) }.toSet()
+        val upperBoundClasses = upperBounds.mapNotNull { it.fullyExpandedType(session).toClass(session) }.toSet()
 
         // Following if condition is an optimization: if we ignore the subtyping relation and treat all upper bounds as unrelated
         // classes/interfaces, yet the types are deemed compatible for sure, then we just bail out early.
         if (lowerBounds.isEmpty() &&
-            (upperBounds.size < 2 ||
-                    areClassesOrInterfacesCompatible(upperBoundClasses, compatibilityUpperBound) == Compatibility.COMPATIBLE)
+            (upperBounds.size < 2 || areClassesOrInterfacesCompatible(upperBoundClasses, compatibilityUpperBound) == COMPATIBLE)
         ) {
-            return Compatibility.COMPATIBLE
+            return COMPATIBLE
         }
 
-        val leafClassesOrInterfaces = computeLeafClassesOrInterfaces(upperBoundClasses)
+        val leafClassesOrInterfaces = computeLeafClassesOrInterfaces(upperBoundClasses, session)
         areClassesOrInterfacesCompatible(leafClassesOrInterfaces, compatibilityUpperBound)?.let { return it }
 
         // Check if the range formed by upper bounds and lower bounds is empty.
         if (!lowerBounds.all { lowerBoundType ->
                 val classesSatisfyingLowerBounds =
-                    lowerBoundType.toConcreteClass(this)?.thisAndAllSuperConcreteClasses ?: emptySet()
+                    lowerBoundType.fullyExpandedType(session).toClass(session)?.thisAndAllSuperConcreteClasses(session) ?: emptySet()
                 leafClassesOrInterfaces.all { it in classesSatisfyingLowerBounds }
             }
         ) {
             return compatibilityUpperBound
         }
 
-        if (upperBounds.size < 2) return Compatibility.COMPATIBLE
+        if (upperBounds.size < 2) return COMPATIBLE
 
         // Base types are compatible. Now we check type parameters.
 
@@ -114,7 +118,7 @@ internal object ConeTypeCompatibilityChecker {
                 collectTypeArgumentMapping(type, this@areCompatible, compatibilityUpperBound)
             }
         }
-        var result = Compatibility.COMPATIBLE
+        var result = COMPATIBLE
         val typeArgsCompatibility = typeArgumentMapping.values.asSequence()
             .map { (upper, lower, compatibilityUpperBound) -> areCompatible(upper, lower, compatibilityUpperBound) }
         for (compatibility in typeArgsCompatibility) {
@@ -130,12 +134,12 @@ internal object ConeTypeCompatibilityChecker {
      *  Puts the upper bound classes into the class hierarchy and count hows many subclasses are there for each encountered class. Then
      * output a list of leaf classes or interfaces in the class hierarchy.
      */
-    private fun computeLeafClassesOrInterfaces(upperBoundClasses: Set<ConcreteClass>): Set<ConcreteClass> {
-        val isLeaf = mutableMapOf<ConcreteClass, Boolean>()
+    private fun computeLeafClassesOrInterfaces(upperBoundClasses: Set<FirClass<*>>, session: FirSession): Set<FirClass<*>> {
+        val isLeaf = mutableMapOf<FirClass<*>, Boolean>()
         upperBoundClasses.associateWithTo(isLeaf) { true }  // implementation of keysToMap actually ends up creating 2 maps so this is better
         val queue = ArrayDeque(upperBoundClasses)
         while (queue.isNotEmpty()) {
-            for (superConcreteClass in queue.removeFirst().superConcreteClasses) {
+            for (superConcreteClass in queue.removeFirst().superClasses(session)) {
                 when (isLeaf[superConcreteClass]) {
                     true -> isLeaf[superConcreteClass] = false
                     false -> {
@@ -158,7 +162,7 @@ internal object ConeTypeCompatibilityChecker {
      * @return null if this check is inconclusive
      */
     private fun areClassesOrInterfacesCompatible(
-        classesOrInterfaces: Collection<ConcreteClass>,
+        classesOrInterfaces: Collection<FirClass<*>>,
         compatibilityUpperBound: Compatibility
     ): Compatibility? {
         val classes = classesOrInterfaces.filter { !it.isInterface }
@@ -167,16 +171,16 @@ internal object ConeTypeCompatibilityChecker {
             return if (classes.any { it.hasPredefinedEqualityContract }) {
                 compatibilityUpperBound
             } else {
-                Compatibility.SOFT_INCOMPATIBLE
+                SOFT_INCOMPATIBLE
             }
         }
-        val finalClass = classes.firstOrNull { it.isFinal } ?: return null
+        val finalClass = classes.firstOrNull { it is FirRegularClass && it.modality == Modality.FINAL } ?: return null
         // One final class and some other unrelated interface are not compatible
         if (classesOrInterfaces.size > classes.size) {
             return if (finalClass.hasPredefinedEqualityContract) {
                 compatibilityUpperBound
             } else {
-                Compatibility.SOFT_INCOMPATIBLE
+                SOFT_INCOMPATIBLE
             }
         }
         return null
@@ -311,7 +315,7 @@ internal object ConeTypeCompatibilityChecker {
                 if (typeParameterOwner.symbol.classId == StandardClassIds.Enum || typeParameterOwner.symbol.classId == StandardClassIds.KClass) {
                     compatibilityUpperBound
                 } else {
-                    Compatibility.SOFT_INCOMPATIBLE
+                    SOFT_INCOMPATIBLE
                 }
             BoundTypeArguments(mutableSetOf(), mutableSetOf(), compatibilityUpperBoundForTypeArg)
         }.let {
@@ -360,103 +364,37 @@ internal object ConeTypeCompatibilityChecker {
         val compatibilityUpperBound: Compatibility
     )
 
-    private fun ConeClassLikeType.toConcreteClass(ctx: ConeInferenceContext): ConcreteClass? {
-        return lookupTag.toConcreteClass(ctx)
-    }
+    /**
+     * The following are considered to have a predefined equality contract:
+     *   - enums
+     *   - primitives (including unsigned integer types)
+     *   - classes
+     *   - strings
+     *   - objects of data classes
+     *   - objects of inline classes
+     *   - kotlin.Unit
+     */
+    private val FirClass<*>.hasPredefinedEqualityContract: Boolean
+        get() = isEnumClass || classId == StandardClassIds.Enum ||
+                isPrimitiveType() || classId == StandardClassIds.KClass ||
+                classId == StandardClassIds.String || classId == StandardClassIds.Unit ||
+                (this is FirRegularClass && (isData || isInline))
 
-    private fun ConeClassLikeLookupTag.toConcreteClass(
-        ctx: ConeInferenceContext
-    ): ConcreteClass? = when (val klass = ctx.symbolProvider.getSymbolByLookupTag(this)?.fir) {
-        is FirTypeAlias -> klass.getAliasedClass(ctx)?.let { ConcreteClass.TypeAlias(klass, it, ctx) }
-        is FirClass<*> -> ConcreteClass.Class(klass, ctx)
-        else -> null
-    }
+    private fun FirClass<*>.superClasses(session: FirSession): Set<FirClass<*>> =
+        superConeTypes.mapNotNull { it.fullyExpandedType(session).toRegularClass(session) }.toSet()
 
-    private sealed class ConcreteClass {
-        data class Class(val firClass: FirClass<*>, override val ctx: ConeInferenceContext) : ConcreteClass()
-        data class TypeAlias(val firTypeAlias: FirTypeAlias, val referencedClass: FirClass<*>, override val ctx: ConeInferenceContext) :
-            ConcreteClass()
-
-        abstract val ctx: ConeInferenceContext
-
-        val isInterface: Boolean
-            get() {
-                return when (this) {
-                    is Class -> firClass.isInterface
-                    is TypeAlias -> referencedClass.isInterface
-                }
+    @OptIn(ExperimentalStdlibApi::class)
+    private fun FirClass<*>.thisAndAllSuperConcreteClasses(session: FirSession): Set<FirClass<*>> {
+        val queue = ArrayDeque<FirClass<*>>()
+        queue.addLast(this)
+        return buildSet {
+            add(this@thisAndAllSuperConcreteClasses)
+            while (queue.isNotEmpty()) {
+                val current = queue.removeFirst()
+                val superTypes = current.superClasses(session)
+                superTypes.filterNotTo(queue) { it in this@buildSet }
+                addAll(superTypes)
             }
-
-        val superConcreteClasses: Set<ConcreteClass> by lazy {
-            val firClass: FirClass<*> = when (this) {
-                is Class -> firClass
-                is TypeAlias -> referencedClass
-            }
-            firClass.superConeTypes.mapNotNull { it.lookupTag.toConcreteClass(ctx) }.toSet()
-        }
-
-        @OptIn(ExperimentalStdlibApi::class)
-        val thisAndAllSuperConcreteClasses: Set<ConcreteClass> by lazy {
-            val queue = ArrayDeque<ConcreteClass>()
-            queue.addLast(this)
-            buildSet {
-                add(this@ConcreteClass)
-                while (queue.isNotEmpty()) {
-                    val current = queue.removeFirst()
-                    val superTypes = current.superConcreteClasses
-                    superTypes.filterNotTo(queue) { it in this@buildSet }
-                    addAll(superTypes)
-                }
-            }
-        }
-
-        val isFinal: Boolean
-            get() {
-                return when (this) {
-                    is Class -> firClass.isFinal
-                    is TypeAlias -> referencedClass.isFinal
-                }
-            }
-
-        /**
-         * The following are considered to have a predefined equality contract:
-         *   - enums
-         *   - primitives (including unsigned integer types)
-         *   - classes
-         *   - strings
-         *   - objects of data classes
-         *   - objects of inline classes
-         *   - kotlin.Unit
-         */
-        val hasPredefinedEqualityContract: Boolean
-            get() {
-                val firClass = when (this) {
-                    is Class -> firClass
-                    is TypeAlias -> referencedClass
-                }
-                return firClass.isEnumClass || firClass.classId == StandardClassIds.Enum ||
-                        firClass.isPrimitiveType() || firClass.classId == StandardClassIds.KClass ||
-                        firClass.classId == StandardClassIds.String || firClass.classId == StandardClassIds.Unit ||
-                        (firClass is FirRegularClass && (firClass.isData || firClass.isInline))
-            }
-
-        private val FirClass<*>.isFinal: Boolean
-            get() {
-                return when (this) {
-                    is FirAnonymousObject -> true
-                    is FirRegularClass -> status.modality == Modality.FINAL
-                    else -> throw java.lang.IllegalStateException("unknown type of FirClass $this")
-                }
-            }
-    }
-
-    private fun FirTypeAlias.getAliasedClass(ctx: ConeInferenceContext): FirClass<*>? {
-        val lookupTag = expandedTypeRef.coneTypeSafe<ConeClassLikeType>()?.lookupTag ?: return null
-        val fir = ctx.session.symbolProvider.getSymbolByLookupTag(lookupTag)?.fir ?: return null
-        return when (fir) {
-            is FirTypeAlias -> fir.getAliasedClass(ctx)
-            is FirClass<*> -> fir
-            else -> null
         }
     }
 }

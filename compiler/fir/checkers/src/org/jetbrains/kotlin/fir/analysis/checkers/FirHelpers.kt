@@ -123,6 +123,14 @@ fun FirClass<*>.isSupertypeOf(other: FirClass<*>): Boolean {
 }
 
 /**
+ * Returns the FirClass associated with this
+ * or null of something goes wrong.
+ */
+fun ConeClassLikeType.toClass(session: FirSession): FirClass<*>? {
+    return lookupTag.toSymbol(session).safeAs<FirClassSymbol<*>>()?.fir
+}
+
+/**
  * Returns the FirRegularClass associated with this
  * or null of something goes wrong.
  */
