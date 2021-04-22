@@ -10,13 +10,14 @@ import org.jetbrains.kotlin.fir.analysis.checkers.context.CheckerContext
 import org.jetbrains.kotlin.fir.analysis.diagnostics.DiagnosticReporter
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors
 import org.jetbrains.kotlin.fir.analysis.diagnostics.reportOn
+import org.jetbrains.kotlin.fir.analysis.types.ConeTypeCompatibilityChecker
 import org.jetbrains.kotlin.fir.declarations.isEnumClass
 import org.jetbrains.kotlin.fir.expressions.FirEqualityOperatorCall
 import org.jetbrains.kotlin.fir.expressions.FirStatement
 import org.jetbrains.kotlin.fir.resolve.inference.inferenceComponents
 import org.jetbrains.kotlin.fir.resolve.toFirRegularClass
 import org.jetbrains.kotlin.fir.types.*
-import org.jetbrains.kotlin.fir.types.ConeTypeCompatibilityChecker.areCompatible
+import org.jetbrains.kotlin.fir.analysis.types.ConeTypeCompatibilityChecker.areCompatible
 
 object FirEqualityOperatorCallChecker : FirBasicExpressionChecker() {
     override fun check(expression: FirStatement, context: CheckerContext, reporter: DiagnosticReporter) {

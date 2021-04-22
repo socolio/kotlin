@@ -3,7 +3,7 @@
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
-package org.jetbrains.kotlin.fir.types
+package org.jetbrains.kotlin.fir.analysis.types
 
 import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.fir.declarations.*
@@ -13,6 +13,7 @@ import org.jetbrains.kotlin.fir.resolve.symbolProvider
 import org.jetbrains.kotlin.fir.symbols.ConeClassLikeLookupTag
 import org.jetbrains.kotlin.fir.symbols.ConeTypeParameterLookupTag
 import org.jetbrains.kotlin.fir.symbols.impl.FirTypeParameterSymbol
+import org.jetbrains.kotlin.fir.types.*
 import org.jetbrains.kotlin.name.StandardClassIds
 import org.jetbrains.kotlin.types.Variance
 
@@ -41,7 +42,7 @@ import org.jetbrains.kotlin.types.Variance
  * covariant and contravariant bounds is empty. For example, a range like `[Collection, List]` is empty and hence invalid because `List` is
  * not a super class/interface of `Collection`
  */
-object ConeTypeCompatibilityChecker {
+internal object ConeTypeCompatibilityChecker {
 
     /**
      * The result returned by [ConeTypeCompatibilityChecker]. Note the order of enum entries matters.
