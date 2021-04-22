@@ -20,6 +20,8 @@ import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.REDUNDANT_SINGLE_
 import org.jetbrains.kotlin.fir.analysis.diagnostics.reportOn
 import org.jetbrains.kotlin.fir.expressions.FirFunctionCall
 import org.jetbrains.kotlin.fir.expressions.FirStatement
+import org.jetbrains.kotlin.fir.expressions.FirStringConcatenationCall
+import org.jetbrains.kotlin.fir.expressions.arguments
 import org.jetbrains.kotlin.name.StandardClassIds
 import org.jetbrains.kotlin.fir.types.classId
 import org.jetbrains.kotlin.fir.types.coneType
@@ -27,13 +29,13 @@ import org.jetbrains.kotlin.psi.KtStringTemplateExpression
 
 object RedundantSingleExpressionStringTemplateChecker : FirBasicExpressionChecker() {
     override fun check(expression: FirStatement, context: CheckerContext, reporter: DiagnosticReporter) {
-        if (expression.source?.kind != FirFakeSourceElementKind.GeneratedToStringCallOnTemplateEntry) return
-        if (expression !is FirFunctionCall) return
-        if (
-            expression.explicitReceiver?.typeRef?.coneType?.classId == StandardClassIds.String
-            && expression.stringParentChildrenCount() == 1 // there is no more children in original string template
-        ) {
-            reporter.reportOn(expression.source, REDUNDANT_SINGLE_EXPRESSION_STRING_TEMPLATE, context)
+        if (expression !is FirStringConcatenationCall) return
+        for (argumentExpression in expression.arguments) {
+            if (argumentExpression.typeRef.coneType.classId == StandardClassIds.String &&
+                argumentExpression.stringParentChildrenCount() == 1 // there is no more children in original string template
+            ) {
+                reporter.reportOn(argumentExpression.source, REDUNDANT_SINGLE_EXPRESSION_STRING_TEMPLATE, context)
+            }
         }
     }
 
