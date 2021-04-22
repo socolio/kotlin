@@ -25,3 +25,5 @@ class PsiSourceFile(val psiFile: PsiFile) : SourceFile {
 
     override fun getName(): String? = psiFile.virtualFile?.name
 }
+
+fun SourceElement.getPsi(): PsiElement? = (this as? PsiSourceElement)?.psi
