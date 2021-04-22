@@ -67,6 +67,7 @@ BuildCacheKt.setupBuildCache(settings)
 include ":benchmarks",
         ":compiler",
         ":compiler:util",
+        ":compiler:util:extensions",
         ":compiler:config",
         ":compiler:config.jvm",
         ":kotlin-util-io",
