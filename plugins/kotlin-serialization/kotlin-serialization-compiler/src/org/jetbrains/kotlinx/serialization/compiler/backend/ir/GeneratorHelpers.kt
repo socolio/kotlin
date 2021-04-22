@@ -32,9 +32,7 @@ import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.descriptorUtil.*
 import org.jetbrains.kotlin.resolve.jvm.JvmPrimitiveType
 import org.jetbrains.kotlin.types.*
-import org.jetbrains.kotlin.types.typeUtil.isTypeParameter
-import org.jetbrains.kotlin.types.typeUtil.makeNotNullable
-import org.jetbrains.kotlin.types.typeUtil.representativeUpperBound
+import org.jetbrains.kotlin.types.typeUtil.*
 import org.jetbrains.kotlin.util.OperatorNameConventions
 import org.jetbrains.kotlinx.serialization.compiler.backend.common.*
 import org.jetbrains.kotlinx.serialization.compiler.backend.jvm.*
@@ -715,8 +713,25 @@ interface IrBuilderExtension {
             endOffset,
             compilerContext.irBuiltIns.kClassClass.starProjectedType,
             classSymbol,
-            classType.toIrType() // todo: maybe this is jvm-specific behavior
+            starProjectedOrArrayType(clazz.defaultType).toIrType()
         )
+    }
+
+    // Needed because List<Int>::class is prohibited, but Array<Int>::class is allowed
+    // Moreover, detailed information about type arguments required for class references on jvm
+    // while the rest of serialization framework can use star projections
+    //
+    // Non-recursive simple version: if (isArray) classType.toIrType() else classSymbol.starProjectedType
+    // (doesnt work with Array<T>)
+    //
+    // see also kapt3#replaceAnonymousTypeWithSuperType
+    fun starProjectedOrArrayType(classType: KotlinType): KotlinType {
+        val replacement = classType.arguments.mapIndexed { i, proj ->
+            val argType = proj.type
+            if (KotlinBuiltIns.isArray(argType)) TypeProjectionImpl(proj.projectionKind, starProjectedOrArrayType(argType))
+            else StarProjectionImpl(classType.constructor.parameters[i])
+        }
+        return classType.replace(replacement)
     }
 
     fun IrBuilderWithScope.classReference(classType: KotlinType): IrClassReference = createClassReference(classType, startOffset, endOffset)
@@ -1073,9 +1088,14 @@ interface IrBuilderExtension {
         return superClasses.singleOrNull { it.kind == ClassKind.CLASS }
     }
 
-    fun IrClass.findWriteSelfMethod(): IrSimpleFunction? =
-        declarations.filter { it is IrSimpleFunction && it.name == SerialEntityNames.WRITE_SELF_NAME && !it.isFakeOverride }
+    fun IrClass.findWriteSelfMethod(): IrSimpleFunction? {
+        val f = declarations.filter { it is IrSimpleFunction && it.name == SerialEntityNames.WRITE_SELF_NAME && !it.isFakeOverride }
             .takeUnless(Collection<*>::isEmpty)?.single() as IrSimpleFunction?
+        // When super class is in another module, empty receiver parameter is deserialized incorrectly
+        //     (see MemberDeserializer#getDispatchReceiverParameter)
+        f?.dispatchReceiverParameter = null
+        return f
+    }
 
     fun IrBlockBodyBuilder.serializeAllProperties(
         generator: AbstractSerialGenerator,

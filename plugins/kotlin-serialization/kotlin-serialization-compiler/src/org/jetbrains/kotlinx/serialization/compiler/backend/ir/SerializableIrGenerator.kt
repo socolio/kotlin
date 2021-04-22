@@ -295,6 +295,7 @@ class SerializableIrGenerator(
                 // call super.writeSelf
                 val superWriteSelfF = superClass.findWriteSelfMethod()
                 if (superWriteSelfF != null) {
+                    assert(superWriteSelfF.dispatchReceiverParameter == null) { "write\$self method must be static in $superClass" }
                     val args = mutableListOf<IrExpression>(irGet(objectToSerialize), irGet(localOutput), irGet(localSerialDesc))
 
                     val typeArgsForParent = serializableDescriptor.typeConstructor.supertypes.single { it.toClassDescriptor?.isInternalSerializable == true }.arguments
