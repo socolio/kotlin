@@ -10,6 +10,7 @@ fun foo(f: (Foo) -> Unit) {}
 
 fun main() {
     foo { f: Foo ->
+        //
         <!NEW_INFERENCE_ERROR!>myRun { f }<!>
     }
 }

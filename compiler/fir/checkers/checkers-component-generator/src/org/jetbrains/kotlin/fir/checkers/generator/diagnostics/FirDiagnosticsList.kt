@@ -14,7 +14,6 @@ import org.jetbrains.kotlin.contracts.description.EventOccurrencesRange
 import org.jetbrains.kotlin.descriptors.EffectiveVisibility
 import org.jetbrains.kotlin.descriptors.Visibility
 import org.jetbrains.kotlin.diagnostics.WhenMissingCase
-import org.jetbrains.kotlin.fir.FirSourceElement
 import org.jetbrains.kotlin.fir.PrivateForInline
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.expressions.FirExpression
@@ -38,6 +37,9 @@ object DIAGNOSTICS_LIST : DiagnosticList() {
         }
         val UNSUPPORTED_FEATURE by error<PsiElement> {
             parameter<Pair<LanguageFeature, LanguageVersionSettings>>("unsupportedFeature")
+        }
+        val NEW_INFERENCE_ERROR by error<PsiElement> {
+            parameter<String>("error")
         }
     }
 

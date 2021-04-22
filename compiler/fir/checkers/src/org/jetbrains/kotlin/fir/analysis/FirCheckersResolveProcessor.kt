@@ -26,6 +26,7 @@ class FirCheckersResolveProcessor(
 
 class FirCheckersRunnerTransformer(private val diagnosticCollector: AbstractDiagnosticCollector) : FirTransformer<Nothing?>() {
     override fun <E : FirElement> transformElement(element: E, data: Nothing?): E {
+        1.unaryMinus()
         return element
     }
 
