@@ -111,11 +111,9 @@ open class KotlinJsIrLink @Inject constructor(
                 allCacheDirectories
             )
 
-            args.freeArgs += "-Xcache-directory=${
-                cacheArgs.joinToString(File.pathSeparator) {
-                    it.normalize().absolutePath
-                }
-            }"
+            args.cacheDirectories = cacheArgs.joinToString(File.pathSeparator) {
+                it.normalize().absolutePath
+            }
         }
         super.callCompilerAsync(args, sourceRoots, changedFiles)
     }
@@ -234,10 +232,7 @@ internal class CacheBuilder(
                 visitedFiles,
                 compileClasspath.files,
                 cacheDirectory,
-                (allCacheDirectories + associatedCaches).distinct(),
-
-
-                file.name
+                (allCacheDirectories + associatedCaches).distinct()
             )
             allCacheDirectories.add(cacheDirectory)
         }
@@ -277,9 +272,7 @@ internal class CacheBuilder(
                     .flatMap { it.moduleArtifacts }
                     .map { it.file },
                 cacheDirectory,
-                dependenciesCacheDirectories,
-
-                library.name
+                dependenciesCacheDirectories
             )
         }
     }
@@ -289,10 +282,7 @@ internal class CacheBuilder(
         visitedFiles: MutableSet<File>,
         dependencies: Collection<File>,
         cacheDirectory: File,
-        dependenciesCacheDirectories: Collection<File>,
-
-
-        jsName: String
+        dependenciesCacheDirectories: Collection<File>
     ) {
         if (file in visitedFiles) return
         val compilerArgs = compilerArgsFactory()
@@ -306,11 +296,11 @@ internal class CacheBuilder(
 
         visitedFiles.add(file)
         compilerArgs.includes = file.normalize().absolutePath
-        compilerArgs.outputFile = cacheDirectory.resolve("${jsName}.js").normalize().absolutePath
-        compilerArgs.freeArgs += "-Xcache-directory=${dependenciesCacheDirectories.joinToString(File.pathSeparator)}"
-
-        // Change it for produce caches
-        compilerArgs.irProduceJs = true
+        compilerArgs.outputFile = cacheDirectory.normalize().absolutePath
+        if (dependenciesCacheDirectories.isNotEmpty()) {
+            compilerArgs.cacheDirectories = dependenciesCacheDirectories.joinToString(File.pathSeparator)
+        }
+        compilerArgs.irBuildCache = true
 
         compilerArgs.libraries = dependencies
             .filter { it.exists() && libraryFilter(it) }
