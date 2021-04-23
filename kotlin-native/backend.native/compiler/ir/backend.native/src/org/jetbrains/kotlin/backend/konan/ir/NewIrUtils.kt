@@ -5,14 +5,13 @@
 
 package org.jetbrains.kotlin.backend.konan.ir
 
-import org.jetbrains.kotlin.backend.common.atMostOne
 import org.jetbrains.kotlin.backend.konan.DECLARATION_ORIGIN_INLINE_CLASS_SPECIAL_FUNCTION
 import org.jetbrains.kotlin.backend.konan.descriptors.isInteropLibrary
 import org.jetbrains.kotlin.backend.konan.llvm.KonanMetadata
 import org.jetbrains.kotlin.backend.konan.serialization.KonanFileMetadataSource
 import org.jetbrains.kotlin.backend.konan.serialization.KonanIrModuleFragmentImpl
-import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
+import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.descriptors.ModuleDescriptor
 import org.jetbrains.kotlin.descriptors.konan.DeserializedKlibModuleOrigin
 import org.jetbrains.kotlin.descriptors.konan.klibModuleOrigin
@@ -46,7 +45,7 @@ fun IrClass.isUnit() = this.isClassTypeWithSignature(IdSignatureValues.unit)
 fun IrClass.isKotlinArray() = this.isClassTypeWithSignature(IdSignatureValues.array)
 
 val IrClass.superClasses get() = this.superTypes.map { it.classifierOrFail as IrClassSymbol }
-fun IrClass.getSuperClassNotAny() = this.superClasses.map { it.owner }.atMostOne { !it.isInterface && !it.isAny() }
+fun IrClass.getSuperClassNotAny() = this.superClasses.map { it.owner }.singleOrNull { !it.isInterface && !it.isAny() }
 
 fun IrClass.isAny() = this.isClassTypeWithSignature(IdSignatureValues.any)
 
@@ -91,7 +90,7 @@ fun IrValueParameter.isInlineParameter(): Boolean =
 val IrDeclaration.parentDeclarationsWithSelf: Sequence<IrDeclaration>
     get() = generateSequence(this, { it.parent as? IrDeclaration })
 
-fun IrClass.companionObject() = this.declarations.filterIsInstance<IrClass>().atMostOne { it.isCompanion }
+fun IrClass.companionObject() = this.declarations.filterIsInstance<IrClass>().singleOrNull { it.isCompanion }
 
 fun buildSimpleAnnotation(irBuiltIns: IrBuiltIns, startOffset: Int, endOffset: Int,
                           annotationClass: IrClass, vararg args: String): IrConstructorCall {

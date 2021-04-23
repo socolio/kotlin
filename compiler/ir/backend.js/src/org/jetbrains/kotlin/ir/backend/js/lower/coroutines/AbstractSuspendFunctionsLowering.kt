@@ -8,8 +8,8 @@ package org.jetbrains.kotlin.ir.backend.js.lower.coroutines
 import org.jetbrains.kotlin.backend.common.*
 import org.jetbrains.kotlin.backend.common.ir.*
 import org.jetbrains.kotlin.backend.common.lower.createIrBuilder
-import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
+import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.backend.js.lower.CallableReferenceLowering
 import org.jetbrains.kotlin.ir.builders.*
@@ -425,10 +425,9 @@ abstract class AbstractSuspendFunctionsLowering<C : CommonBackendContext>(val co
 
             if (isSuspendLambda) {
                 // Suspend lambda - create factory methods.
-                val createFunction = coroutineBaseClass.owner.simpleFunctions()
-                    .atMostOne {
-                        it.name.asString() == "create" && it.valueParameters.size == function.valueParameters.size + 1
-                    }
+                val createFunction = coroutineBaseClass.owner.simpleFunctions().singleOrNull {
+                    it.name.asString() == "create" && it.valueParameters.size == function.valueParameters.size + 1
+                }
 
                 val createMethod = buildCreateMethod(createFunction, coroutineConstructor)
                 implementedMembers.add(createMethod)
