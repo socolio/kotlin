@@ -8,6 +8,7 @@ dependencies {
     api(project(":compiler:ir.serialization.common"))
     api(project(":js:js.frontend"))
     implementation(project(":compiler:ir.backend.common"))
+    implementation(project(":compiler:compiler.deserialization"))
 
     compileOnly(intellijCoreDep()) { includeJars("intellij-core") }
 }

@@ -26,6 +26,7 @@ dependencies {
     compile(project(":compiler:fir:checkers"))
     compile(project(":compiler:fir:java"))
     compile(project(":compiler:fir:jvm"))
+    implementation(project(":compiler:compiler.deserialization"))
     compile(commonDep("org.jetbrains.kotlinx", "kotlinx-coroutines-core")) { isTransitive = false }
     compile(commonDep("org.jetbrains.kotlinx", "kotlinx-coroutines-jdk8")) { isTransitive = false }
 

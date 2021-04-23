@@ -6,6 +6,7 @@ plugins {
 dependencies {
     compile(project(":compiler:util"))
     compile(project(":compiler:frontend"))
+    implementation(project(":compiler:compiler.deserialization"))
     compile(project(":compiler:serialization"))
     compile(project(":js:js.ast"))
     compile(project(":js:js.config"))

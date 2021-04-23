@@ -60,6 +60,7 @@ val projectsToShadow by extra(listOf(
         ":compiler:frontend.common",
         ":compiler:frontend.java",
         ":compiler:frontend:cfg",
+        ":compiler:compiler.deserialization",
         ":idea",
         ":idea:idea-native",
         ":idea:idea-core",
