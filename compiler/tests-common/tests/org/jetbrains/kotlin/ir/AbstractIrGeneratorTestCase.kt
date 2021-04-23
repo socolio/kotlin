@@ -25,7 +25,6 @@ import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
 import org.jetbrains.kotlin.codegen.CodegenTestCase
 import org.jetbrains.kotlin.config.LanguageVersionSettings
 import org.jetbrains.kotlin.config.languageVersionSettings
-import org.jetbrains.kotlin.idea.MainFunctionDetector
 import org.jetbrains.kotlin.ir.backend.js.lower.serialization.ir.JsManglerDesc
 import org.jetbrains.kotlin.ir.backend.jvm.serialization.JvmDescriptorMangler
 import org.jetbrains.kotlin.ir.declarations.IrFile
@@ -41,7 +40,6 @@ import org.jetbrains.kotlin.psi2ir.Psi2IrTranslator
 import org.jetbrains.kotlin.psi2ir.generators.GeneratorExtensions
 import org.jetbrains.kotlin.psi2ir.generators.generateTypicalIrProviderList
 import org.jetbrains.kotlin.resolve.AnalyzingUtils
-import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.CompilerEnvironment
 import org.jetbrains.kotlin.resolve.lazy.JvmResolveUtil
 import org.jetbrains.kotlin.test.ConfigurationKind
@@ -130,7 +128,7 @@ abstract class AbstractIrGeneratorTestCase : CodegenTestCase() {
                     CompilerEnvironment,
                 ),
                 psi2ir, ktFilesToAnalyze, GeneratorExtensions(),
-                createIdSignatureComposer = { IdSignatureDescriptor(JsManglerDesc) }
+                IdSignatureDescriptor(JsManglerDesc),
             )
 
         fun generateIrModuleWithJvmResolve(
@@ -142,9 +140,7 @@ abstract class AbstractIrGeneratorTestCase : CodegenTestCase() {
             return generateIrModule(
                 JvmResolveUtil.analyze(ktFilesToAnalyze, environment), psi2ir, ktFilesToAnalyze,
                 JvmGeneratorExtensionsImpl(generateFacades = false),
-                createIdSignatureComposer = { bindingContext ->
-                    JvmIdSignatureDescriptor(JvmDescriptorMangler(MainFunctionDetector(bindingContext, languageVersionSettings)))
-                }
+                JvmIdSignatureDescriptor(JvmDescriptorMangler(languageVersionSettings)),
             )
         }
 
@@ -153,7 +149,7 @@ abstract class AbstractIrGeneratorTestCase : CodegenTestCase() {
             psi2ir: Psi2IrTranslator,
             ktFilesToAnalyze: List<KtFile>,
             generatorExtensions: GeneratorExtensions,
-            createIdSignatureComposer: (BindingContext) -> IdSignatureComposer
+            idSignatureComposer: IdSignatureComposer
         ): IrModuleFragment {
             val (bindingContext, moduleDescriptor) = analysisResult
             if (!psi2ir.configuration.ignoreErrors) {
@@ -163,8 +159,7 @@ abstract class AbstractIrGeneratorTestCase : CodegenTestCase() {
             val context = psi2ir.createGeneratorContext(
                 moduleDescriptor,
                 bindingContext,
-                // SymbolTable(IdSignatureDescriptor(JsManglerDesc), IrFactoryImpl, NameProvider.DEFAULT),
-                SymbolTable(createIdSignatureComposer(bindingContext), IrFactoryImpl, NameProvider.DEFAULT),
+                SymbolTable(idSignatureComposer, IrFactoryImpl, NameProvider.DEFAULT),
                 generatorExtensions
             )
             val irProviders = generateTypicalIrProviderList(

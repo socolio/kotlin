@@ -15,10 +15,11 @@ import org.jetbrains.kotlin.backend.common.serialization.mangle.descriptor.Descr
 import org.jetbrains.kotlin.backend.common.serialization.mangle.ir.IrBasedKotlinManglerImpl
 import org.jetbrains.kotlin.backend.common.serialization.mangle.ir.IrExportCheckerVisitor
 import org.jetbrains.kotlin.backend.common.serialization.mangle.ir.IrMangleComputer
+import org.jetbrains.kotlin.config.LanguageVersionSettings
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
 import org.jetbrains.kotlin.descriptors.PropertyDescriptor
-import org.jetbrains.kotlin.idea.MainFunctionDetector
+import org.jetbrains.kotlin.idea.MainFunctionDetectorBase
 import org.jetbrains.kotlin.ir.declarations.IrDeclaration
 import org.jetbrains.kotlin.ir.declarations.IrFunction
 import org.jetbrains.kotlin.ir.util.isFromJava
@@ -44,7 +45,9 @@ object JvmIrMangler : IrBasedKotlinManglerImpl() {
         JvmIrManglerComputer(StringBuilder(256), mode)
 }
 
-class JvmDescriptorMangler(private val mainDetector: MainFunctionDetector?) : DescriptorBasedKotlinManglerImpl() {
+class JvmDescriptorMangler(languageVersionSettings: LanguageVersionSettings) : DescriptorBasedKotlinManglerImpl() {
+    private val mainDetector = MainDetector(languageVersionSettings)
+
     companion object {
         private val exportChecker = JvmDescriptorExportChecker()
     }
@@ -55,7 +58,7 @@ class JvmDescriptorMangler(private val mainDetector: MainFunctionDetector?) : De
 
     private class JvmDescriptorManglerComputer(
         builder: StringBuilder,
-        private val mainDetector: MainFunctionDetector?,
+        private val mainDetector: MainFunctionDetectorBase?,
         mode: MangleMode
     ) : DescriptorMangleComputer(builder, mode) {
         override fun addReturnTypeSpecialCase(functionDescriptor: FunctionDescriptor): Boolean =
@@ -82,4 +85,12 @@ class JvmDescriptorMangler(private val mainDetector: MainFunctionDetector?) : De
 
     override fun getMangleComputer(mode: MangleMode): KotlinMangleComputer<DeclarationDescriptor> =
         JvmDescriptorManglerComputer(StringBuilder(256), mainDetector, mode)
+
+    private class MainDetector(languageVersionSettings: LanguageVersionSettings) : MainFunctionDetectorBase(languageVersionSettings) {
+        // Returning empty list here can result in that more functions than necessary will be considered as entrypoints. Namely, a no-arg
+        // function `main` is _not_ considered as entrypoint in frontend if there's an overload with Array<String>, but here it will be
+        // considered as entrypoint and the signature will have a file name suffix.
+        // It is not a problem so far, since these signatures do not have any compatibility guarantees on JVM IR.
+        override fun FunctionDescriptor.getFunctionsFromTheSameFile(): Collection<FunctionDescriptor> = emptyList()
+    }
 }

@@ -23,7 +23,6 @@ import org.jetbrains.kotlin.codegen.state.GenerationState
 import org.jetbrains.kotlin.config.JVMConfigurationKeys
 import org.jetbrains.kotlin.config.languageVersionSettings
 import org.jetbrains.kotlin.descriptors.ScriptDescriptor
-import org.jetbrains.kotlin.idea.MainFunctionDetector
 import org.jetbrains.kotlin.ir.backend.jvm.serialization.JvmDescriptorMangler
 import org.jetbrains.kotlin.ir.declarations.impl.IrFactoryImpl
 import org.jetbrains.kotlin.ir.util.SymbolTable
@@ -337,9 +336,7 @@ class ReplCompilationState<AnalyzerT : ReplCodeAnalyzerBase>(
     }
 
     private val manglerAndSymbolTable by lazy {
-        val mangler = JvmDescriptorMangler(
-            MainFunctionDetector(analyzerEngine.trace.bindingContext, environment.configuration.languageVersionSettings)
-        )
+        val mangler = JvmDescriptorMangler(environment.configuration.languageVersionSettings)
         val symbolTable = SymbolTable(JvmIdSignatureDescriptor(mangler), IrFactoryImpl, JvmNameProvider)
         mangler to symbolTable
     }
