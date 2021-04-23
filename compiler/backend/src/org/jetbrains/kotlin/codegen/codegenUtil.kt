@@ -497,7 +497,7 @@ fun generateBridgeForMainFunctionIfNecessary(
         unwrappedFunctionDescriptor.extensionReceiverParameter == null && unwrappedFunctionDescriptor.valueParameters.isEmpty()
 
     if (!functionDescriptor.isSuspend && !isParameterless) return
-    if (!state.mainFunctionDetector.isMain(unwrappedFunctionDescriptor, checkJvmStaticAnnotation = false, checkReturnType = true)) return
+    if (!state.mainFunctionDetector.isMain(unwrappedFunctionDescriptor, checkJvmStaticAnnotation = false)) return
 
     val bridgeMethodVisitor = packagePartClassBuilder.newMethod(
         Synthetic(originElement, functionDescriptor),
