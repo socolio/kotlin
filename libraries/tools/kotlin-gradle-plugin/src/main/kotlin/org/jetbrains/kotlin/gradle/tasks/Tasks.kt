@@ -42,6 +42,7 @@ import org.jetbrains.kotlin.gradle.logging.GradlePrintingMessageCollector
 import org.jetbrains.kotlin.gradle.logging.kotlinDebug
 import org.jetbrains.kotlin.gradle.logging.kotlinWarn
 import org.jetbrains.kotlin.gradle.plugin.*
+import org.jetbrains.kotlin.gradle.plugin.COMPILER_CLASSPATH_CONFIGURATION_NAME
 import org.jetbrains.kotlin.gradle.report.ReportingSettings
 import org.jetbrains.kotlin.gradle.targets.js.ir.isProduceUnzippedKlib
 import org.jetbrains.kotlin.gradle.utils.getValue
@@ -175,13 +176,15 @@ abstract class AbstractKotlinCompile<T : CommonCompilerArguments>() : AbstractKo
 
     // avoid creating directory in getter: this can lead to failure in parallel build
     @get:LocalState
-    internal val taskBuildDirectory: File by layout.buildDirectory.dir(KOTLIN_BUILD_DIR_NAME).map { it.file(name).asFile }
+    internal val taskBuildDirectory: File by layout.buildDirectory.dir(KOTLIN_BUILD_DIR_NAME)
+        .map { it.file(name).asFile }
 
 
     @get:Internal
     internal val projectObjects = project.objects
 
-    private val localStateDirectoriesProvider: FileCollection = projectObjects.fileCollection().from({ taskBuildDirectory })
+    private val localStateDirectoriesProvider: FileCollection =
+        projectObjects.fileCollection().from({ taskBuildDirectory })
 
     override fun localStateDirectories(): FileCollection = localStateDirectoriesProvider
 
@@ -221,13 +224,19 @@ abstract class AbstractKotlinCompile<T : CommonCompilerArguments>() : AbstractKo
     @get:InputFiles
     @get:Classpath
     open val pluginClasspath: FileCollection by project.provider {
-        // FIXME support compiler plugins with PM20
         (taskData.compilation as? KotlinCompilation<*>?)?.pluginConfigurationName?.let(project.configurations::getByName)
             ?: project.files()
     }
 
     @get:Internal
     internal val pluginOptions = CompilerPluginOptions()
+
+    /**
+     * Plugin Data provided by [KpmCompilerPlugin]
+     */
+    @get:Optional
+    @get:Nested
+    internal var kotlinPluginData: Provider<KotlinCompilerPluginData>? = null
 
     @get:Classpath
     @get:InputFiles
@@ -260,7 +269,8 @@ abstract class AbstractKotlinCompile<T : CommonCompilerArguments>() : AbstractKo
 
     @get:Internal
     @field:Transient
-    internal val kotlinExtProvider: KotlinTopLevelExtension = project.extensions.findByType(KotlinTopLevelExtension::class.java)!!
+    internal val kotlinExtProvider: KotlinTopLevelExtension =
+        project.extensions.findByType(KotlinTopLevelExtension::class.java)!!
 
     override fun getDestinationDir(): File =
         taskData.destinationDir.get()
@@ -436,8 +446,15 @@ open class KotlinCompileArgumentsProvider<T : AbstractKotlinCompile<out CommonCo
         coroutines = taskProvider.coroutines
         logger = taskProvider.logger
         isMultiplatform = taskProvider.isMultiplatform
-        pluginClasspath = taskProvider.pluginClasspath
-        pluginOptions = taskProvider.pluginOptions
+
+        val pluginData = taskProvider.kotlinPluginData?.orNull
+        if (pluginData != null) {
+            pluginClasspath = taskProvider.pluginClasspath + pluginData.classpath
+            pluginOptions = taskProvider.pluginOptions + pluginData.options
+        } else {
+            pluginClasspath = taskProvider.pluginClasspath
+            pluginOptions = taskProvider.pluginOptions
+        }
     }
 }
 
@@ -508,7 +525,11 @@ open class KotlinCompile : AbstractKotlinCompile<K2JVMCompilerArguments>(), Kotl
     override fun createCompilerArgs(): K2JVMCompilerArguments =
         K2JVMCompilerArguments()
 
-    override fun setupCompilerArgs(args: K2JVMCompilerArguments, defaultsOnly: Boolean, ignoreClasspathResolutionErrors: Boolean) {
+    override fun setupCompilerArgs(
+        args: K2JVMCompilerArguments,
+        defaultsOnly: Boolean,
+        ignoreClasspathResolutionErrors: Boolean
+    ) {
         compilerArgumentsContributor.contributeArguments(
             args, compilerArgumentsConfigurationFlags(
                 defaultsOnly,
@@ -683,9 +704,17 @@ open class Kotlin2JsCompile @Inject constructor(
     override fun createCompilerArgs(): K2JSCompilerArguments =
         K2JSCompilerArguments()
 
-    override fun setupCompilerArgs(args: K2JSCompilerArguments, defaultsOnly: Boolean, ignoreClasspathResolutionErrors: Boolean) {
+    override fun setupCompilerArgs(
+        args: K2JSCompilerArguments,
+        defaultsOnly: Boolean,
+        ignoreClasspathResolutionErrors: Boolean
+    ) {
         args.apply { fillDefaultValues() }
-        super.setupCompilerArgs(args, defaultsOnly = defaultsOnly, ignoreClasspathResolutionErrors = ignoreClasspathResolutionErrors)
+        super.setupCompilerArgs(
+            args,
+            defaultsOnly = defaultsOnly,
+            ignoreClasspathResolutionErrors = ignoreClasspathResolutionErrors
+        )
 
         try {
             outputFile.canonicalPath
@@ -809,3 +838,12 @@ open class Kotlin2JsCompile @Inject constructor(
         compilerRunner.runJsCompilerAsync(sourceRoots.kotlinSourceFiles, commonSourceSet.toList(), args, environment)
     }
 }
+
+data class KotlinCompilerPluginData(
+    @get:InputFiles
+    @get:Classpath
+    val classpath: FileCollection,
+
+    @get:Internal
+    val options: CompilerPluginOptions
+)
