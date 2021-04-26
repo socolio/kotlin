@@ -165,27 +165,25 @@ abstract class StructDef(val size: Long, val align: Int) {
     abstract val members: List<StructMember>
     abstract val kind: Kind
 
-    val fields: List<Field> get() {
-        val result = mutableListOf<Field>()
-        members.forEach {
-            when (it) {
-                is Field -> result.add(it)
-                is AnonymousInnerRecord -> result.addAll(it.def.fields)
+    val fields: List<Field>
+        get() = mutableListOf<Field>().apply {
+            members.forEach {
+                when (it) {
+                    is Field -> add(it)
+                    is AnonymousInnerRecord -> addAll(it.def.fields)
+                }
             }
         }
-        return result
-    }
 
-    val bitFields: List<BitField> get() {
-        val result = mutableListOf<BitField>()
-        members.forEach {
-            when (it) {
-                is BitField -> result.add(it)
-                is AnonymousInnerRecord -> result.addAll(it.def.bitFields)
+    val bitFields: List<BitField>
+        get() = mutableListOf<BitField>().apply {
+            members.forEach {
+                when (it) {
+                    is BitField -> add(it)
+                    is AnonymousInnerRecord -> addAll(it.def.bitFields)
+                }
             }
         }
-        return result
-    }
 }
 
 /**
