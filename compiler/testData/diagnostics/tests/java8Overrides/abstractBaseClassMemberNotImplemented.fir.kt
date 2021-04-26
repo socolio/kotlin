@@ -25,3 +25,17 @@ abstract class AILeft : ILeft
 
 // Should be ERROR
 <!MANY_INTERFACES_MEMBER_NOT_IMPLEMENTED!>class RightLeft<!> : ILeft, IRight
+
+interface IBase {
+    fun foo()
+}
+
+interface IBaseEx : IBase {
+    override fun foo() {}
+}
+
+abstract class AIBase : IBase
+
+abstract class AIIntermediate : AIBase(), IBaseEx
+
+class Impl : AIIntermediate()

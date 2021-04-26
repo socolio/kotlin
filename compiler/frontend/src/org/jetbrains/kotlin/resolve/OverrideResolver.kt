@@ -596,19 +596,11 @@ class OverrideResolver(
             }
         }
 
-        private fun checkInheritedAndDelegatedSignatures(
-            descriptor: CallableMemberDescriptor,
-            reportingStrategy: CheckInheritedSignaturesReportStrategy,
-            overrideReportStrategyForDelegates: CheckOverrideReportStrategy?,
-            kotlinTypeRefiner: KotlinTypeRefiner
-        ) {
-            val kind = descriptor.kind
-            if (kind != FAKE_OVERRIDE && kind != DELEGATION) return
-
-            val directOverridden = descriptor.overriddenDescriptors
+        private fun CallableMemberDescriptor.computeRelevantDirectlyOverridden(): Set<CallableMemberDescriptor> {
+            val directOverridden = overriddenDescriptors
 
             // directOverridden may be empty if user tries to delegate implementation of abstract class instead of interface
-            if (directOverridden.isEmpty()) return
+            if (directOverridden.isEmpty()) return emptySet()
 
             // collects map from the directly overridden descriptor to the set of declarations:
             // -- if directly overridden is not fake, the set consists of one element: this directly overridden
@@ -620,8 +612,20 @@ class OverrideResolver(
                 Sets.newLinkedHashSet(allOverriddenDeclarations)
             )
 
-            val relevantDirectlyOverridden =
-                getRelevantDirectlyOverridden(overriddenDeclarationsByDirectParent, allFilteredOverriddenDeclarations)
+            return getRelevantDirectlyOverridden(overriddenDeclarationsByDirectParent, allFilteredOverriddenDeclarations)
+        }
+
+        private fun checkInheritedAndDelegatedSignatures(
+            descriptor: CallableMemberDescriptor,
+            reportingStrategy: CheckInheritedSignaturesReportStrategy,
+            overrideReportStrategyForDelegates: CheckOverrideReportStrategy?,
+            kotlinTypeRefiner: KotlinTypeRefiner
+        ) {
+            val kind = descriptor.kind
+            if (kind != FAKE_OVERRIDE && kind != DELEGATION) return
+
+            val relevantDirectlyOverridden = descriptor.computeRelevantDirectlyOverridden()
+            if (relevantDirectlyOverridden.isEmpty()) return
 
             if (descriptor.visibility === DescriptorVisibilities.INVISIBLE_FAKE) {
                 checkInvisibleFakeOverride(descriptor, relevantDirectlyOverridden, reportingStrategy)
@@ -642,9 +646,7 @@ class OverrideResolver(
                 .filter { !isOrOverridesSynthesized(it) }
                 .partition { it.modality != Modality.ABSTRACT }
 
-            val numImplementations = concreteOverridden.size
-
-            when (numImplementations) {
+            when (concreteOverridden.size) {
                 0 ->
                     if (kind != DELEGATION) {
                         abstractOverridden.forEach {
@@ -709,7 +711,7 @@ class OverrideResolver(
                                 reportingStrategy.toDeprecationStrategy()
                             } else reportingStrategy
                             checkMissingOverridesByJava8Restrictions(
-                                overridden.overriddenDescriptors.toSet(),
+                                overridden.computeRelevantDirectlyOverridden(),
                                 reportingStrategy = newReportingStrategy,
                                 onlyBaseClassMembers = true
                             )
