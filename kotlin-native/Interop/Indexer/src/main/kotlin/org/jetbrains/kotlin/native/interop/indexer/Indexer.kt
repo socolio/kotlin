@@ -244,7 +244,6 @@ internal class NativeIndexImpl(val library: NativeLibrary, val verbose: Boolean 
                             IncompleteField(name, fieldType)
                         } else if (clang_Cursor_isBitField(fieldCursor) == 0) {
                             val canonicalFieldType = clang_getCanonicalType(fieldCursor.type)
-                            println("getMembers> parent = ${parent.spelling}: field ${fieldCursor.spelling}; type ${canonicalFieldType.name}; offset = $offset, immediateOffset = ${clang_Cursor_getOffsetOfField(fieldCursor)}")
                             Field(
                                     name,
                                     fieldType,
