@@ -16,11 +16,17 @@ sealed class ResolutionMode {
     object ContextDependentDelegate : ResolutionMode()
     object ContextIndependent : ResolutionMode()
     // TODO: it's better not to use WithExpectedType(FirImplicitTypeRef)
-    class WithExpectedType(val expectedTypeRef: FirTypeRef) : ResolutionMode()
+    class WithExpectedType(val expectedTypeRef: FirTypeRef, val mayBeCoercionToUnitApplied: Boolean = false) : ResolutionMode()
 
     class WithStatus(val status: FirDeclarationStatus) : ResolutionMode()
 
     class LambdaResolution(val expectedReturnTypeRef: FirResolvedTypeRef?) : ResolutionMode()
+}
+
+fun ResolutionMode.expectedType(components: BodyResolveComponents): FirTypeRef? = when (this) {
+    is ResolutionMode.WithExpectedType -> expectedTypeRef
+    is ResolutionMode.ContextIndependent -> components.noExpectedType
+    else -> null
 }
 
 fun withExpectedType(expectedTypeRef: FirTypeRef?): ResolutionMode =
