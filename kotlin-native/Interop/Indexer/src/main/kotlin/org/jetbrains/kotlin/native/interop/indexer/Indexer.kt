@@ -188,20 +188,6 @@ internal class NativeIndexImpl(val library: NativeLibrary, val verbose: Boolean 
     private fun createStructDecl(cursor: CValue<CXCursor>): StructDeclImpl =
             StructDeclImpl(cursor.type.name, getLocation(cursor))
 
-    private fun hasPackedAttribute(cursor: CValue<CXCursor>): Boolean {
-        assert(cursor.kind == CXCursorKind.CXCursor_UnionDecl || cursor.kind == CXCursorKind.CXCursor_StructDecl)
-        var result = false
-        visitChildren(cursor) { child, _ ->
-            if (child.kind == CXCursorKind.CXCursor_PackedAttr) {
-                result = true
-                CXChildVisitResult.CXChildVisit_Break
-            } else {
-                CXChildVisitResult.CXChildVisit_Continue
-            }
-        }
-        return result
-    }
-
     private fun createStructDef(cursor: CValue<CXCursor>, namedParent: CValue<CXCursor>? = null) : StructDefImpl {
         assert(clang_isCursorDefinition(cursor) != 0)
         val type = clang_getCursorType(cursor)
