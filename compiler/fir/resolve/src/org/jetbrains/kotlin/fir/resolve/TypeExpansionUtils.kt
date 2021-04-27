@@ -10,6 +10,7 @@ import org.jetbrains.kotlin.fir.declarations.FirTypeAlias
 import org.jetbrains.kotlin.fir.declarations.expandedConeType
 import org.jetbrains.kotlin.fir.resolve.substitution.AbstractConeSubstitutor
 import org.jetbrains.kotlin.fir.symbols.impl.FirTypeAliasSymbol
+import org.jetbrains.kotlin.fir.typeContext
 import org.jetbrains.kotlin.fir.types.*
 import org.jetbrains.kotlin.fir.types.impl.ConeClassLikeTypeImpl
 import org.jetbrains.kotlin.fir.utils.WeakPair
@@ -61,7 +62,7 @@ fun ConeClassLikeType.directExpansionType(
     val resultType = expandedConeType(typeAlias)?.applyNullabilityFrom(this) ?: return null
 
     if (resultType.typeArguments.isEmpty()) return resultType
-    return mapTypeAliasArguments(typeAlias, this, resultType) as? ConeClassLikeType
+    return mapTypeAliasArguments(typeAlias, this, resultType, useSiteSession) as? ConeClassLikeType
 }
 
 private fun ConeClassLikeType.applyNullabilityFrom(abbreviation: ConeClassLikeType): ConeClassLikeType {
@@ -73,13 +74,14 @@ private fun mapTypeAliasArguments(
     typeAlias: FirTypeAlias,
     abbreviatedType: ConeClassLikeType,
     resultingType: ConeClassLikeType,
+    useSiteSession: FirSession,
 ): ConeKotlinType {
     if (typeAlias.typeParameters.isNotEmpty() && abbreviatedType.typeArguments.isEmpty()) {
         return resultingType.lookupTag.constructClassType(emptyArray(), resultingType.isNullable)
     }
     val typeAliasMap = typeAlias.typeParameters.map { it.symbol }.zip(abbreviatedType.typeArguments).toMap()
 
-    val substitutor = object : AbstractConeSubstitutor() {
+    val substitutor = object : AbstractConeSubstitutor(useSiteSession.typeContext) {
         override fun substituteType(type: ConeKotlinType): ConeKotlinType? {
             return null
         }

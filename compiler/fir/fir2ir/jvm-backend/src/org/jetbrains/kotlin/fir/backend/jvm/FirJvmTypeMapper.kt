@@ -13,19 +13,19 @@ import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.fir.*
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.resolve.defaultType
-import org.jetbrains.kotlin.fir.resolve.symbolProvider
 import org.jetbrains.kotlin.fir.resolve.fullyExpandedType
 import org.jetbrains.kotlin.fir.resolve.inference.*
+import org.jetbrains.kotlin.fir.resolve.symbolProvider
 import org.jetbrains.kotlin.fir.resolve.toSymbol
 import org.jetbrains.kotlin.fir.symbols.ConeClassLikeLookupTag
 import org.jetbrains.kotlin.fir.symbols.ConeClassifierLookupTag
 import org.jetbrains.kotlin.fir.symbols.ConeTypeParameterLookupTag
-import org.jetbrains.kotlin.name.StandardClassIds
 import org.jetbrains.kotlin.fir.symbols.impl.*
 import org.jetbrains.kotlin.fir.types.*
 import org.jetbrains.kotlin.fir.types.impl.ConeTypeParameterTypeImpl
 import org.jetbrains.kotlin.load.kotlin.TypeMappingMode
 import org.jetbrains.kotlin.name.SpecialNames
+import org.jetbrains.kotlin.name.StandardClassIds
 import org.jetbrains.kotlin.types.AbstractTypeMapper
 import org.jetbrains.kotlin.types.TypeMappingContext
 import org.jetbrains.kotlin.types.TypeSystemCommonBackendContext
@@ -230,7 +230,10 @@ class ConeTypeSystemCommonBackendContextForTypeMapping(
             require(it is ConeKotlinType)
         }
         @Suppress("UNCHECKED_CAST")
-        return defaultType().withArguments((arguments as List<ConeKotlinType>).toTypedArray())
+        return defaultType().withArguments(
+            (arguments as List<ConeKotlinType>).toTypedArray(),
+            session.typeContext,
+        )
     }
 
     override fun TypeParameterMarker.representativeUpperBound(): ConeKotlinType {
