@@ -26,7 +26,7 @@ import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.KtBinaryExpression
 import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 
-object CanBeReplacedWithOperatorAssignmentChecker : FirVariableAssignmentChecker() {
+object CanBeReplacedWithOperatorAssignmentSyntaxChecker : FirVariableAssignmentChecker() {
     override fun check(expression: FirVariableAssignment, context: CheckerContext, reporter: DiagnosticReporter) {
         val lValue = expression.lValue
         if (lValue !is FirResolvedNamedReference) return

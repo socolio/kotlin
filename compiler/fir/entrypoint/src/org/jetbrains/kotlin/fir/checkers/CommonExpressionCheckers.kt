@@ -6,6 +6,7 @@
 package org.jetbrains.kotlin.fir.checkers
 
 import org.jetbrains.kotlin.fir.analysis.checkers.expression.*
+import org.jetbrains.kotlin.fir.analysis.checkers.syntax.FirAnonymousFunctionSyntaxChecker
 
 object CommonExpressionCheckers : ExpressionCheckers() {
     override val annotationCallCheckers: Set<FirAnnotationCallChecker>
@@ -92,5 +93,6 @@ object CommonExpressionCheckers : ExpressionCheckers() {
     override val anonymousFunctionAsExpressionCheckers: Set<FirAnonymousFunctionAsExpressionChecker>
         get() = setOf(
             FirAnonymousFunctionChecker,
+            FirAnonymousFunctionSyntaxChecker,
         )
 }

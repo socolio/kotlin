@@ -25,7 +25,7 @@ import org.jetbrains.kotlin.fir.types.classId
 import org.jetbrains.kotlin.fir.types.coneType
 import org.jetbrains.kotlin.psi.KtStringTemplateExpression
 
-object RedundantSingleExpressionStringTemplateChecker : FirStringConcatenationCallChecker() {
+object RedundantSingleExpressionStringTemplateSyntaxChecker : FirStringConcatenationCallChecker() {
     override fun check(expression: FirStringConcatenationCall, context: CheckerContext, reporter: DiagnosticReporter) {
         for (argumentExpression in expression.arguments) {
             if (argumentExpression.typeRef.coneType.classId == StandardClassIds.String &&
@@ -40,7 +40,7 @@ object RedundantSingleExpressionStringTemplateChecker : FirStringConcatenationCa
         return when (val source = source) {
             is FirPsiSourceElement<*> -> source.psi.stringParentChildrenCount()
             is FirLightSourceElement -> source.lighterASTNode.stringParentChildrenCount(source)
-            else -> null
+            null -> null
         }
     }
 

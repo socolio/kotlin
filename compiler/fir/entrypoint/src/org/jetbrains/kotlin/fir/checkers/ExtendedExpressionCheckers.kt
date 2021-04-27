@@ -16,7 +16,7 @@ object ExtendedExpressionCheckers : ExpressionCheckers() {
 
     override val variableAssignmentCheckers: Set<FirVariableAssignmentChecker>
         get() = setOf(
-            CanBeReplacedWithOperatorAssignmentChecker,
+            CanBeReplacedWithOperatorAssignmentSyntaxChecker,
         )
 
     override val qualifiedAccessCheckers: Set<FirQualifiedAccessChecker>
@@ -32,6 +32,6 @@ object ExtendedExpressionCheckers : ExpressionCheckers() {
 
     override val stringConcatenationCallCheckers: Set<FirStringConcatenationCallChecker>
         get() = setOf(
-            RedundantSingleExpressionStringTemplateChecker,
+            RedundantSingleExpressionStringTemplateSyntaxChecker,
         )
 }
