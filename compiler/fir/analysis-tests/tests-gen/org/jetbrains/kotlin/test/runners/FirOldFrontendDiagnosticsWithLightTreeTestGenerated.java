@@ -16876,6 +16876,12 @@ public class FirOldFrontendDiagnosticsWithLightTreeTestGenerated extends Abstrac
             }
 
             @Test
+            @TestMetadata("kt45508.kt")
+            public void testKt45508() throws Exception {
+                runTest("compiler/testData/diagnostics/tests/java8Overrides/kt45508.kt");
+            }
+
+            @Test
             @TestMetadata("notAMethodOfAny.kt")
             public void testNotAMethodOfAny() throws Exception {
                 runTest("compiler/testData/diagnostics/tests/java8Overrides/notAMethodOfAny.kt");
