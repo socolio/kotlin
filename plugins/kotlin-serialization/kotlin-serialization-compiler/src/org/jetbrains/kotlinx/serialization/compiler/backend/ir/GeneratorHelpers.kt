@@ -713,23 +713,17 @@ interface IrBuilderExtension {
             endOffset,
             compilerContext.irBuiltIns.kClassClass.starProjectedType,
             classSymbol,
-            starProjectedOrArrayType(clazz.defaultType).toIrType()
+            replaceArgumentsWithUpperBounds(classType.representativeUpperBound).toIrType()
         )
     }
 
-    // Needed because List<Int>::class is prohibited, but Array<Int>::class is allowed
-    // Moreover, detailed information about type arguments required for class references on jvm
-    // while the rest of serialization framework can use star projections
+    // Replaces e.g. List<Box<T>> with List<Box<Any>>
     //
-    // Non-recursive simple version: if (isArray) classType.toIrType() else classSymbol.starProjectedType
-    // (doesnt work with Array<T>)
-    //
-    // see also kapt3#replaceAnonymousTypeWithSuperType
-    fun starProjectedOrArrayType(classType: KotlinType): KotlinType {
-        val replacement = classType.arguments.mapIndexed { i, proj ->
-            val argType = proj.type
-            if (KotlinBuiltIns.isArray(argType)) TypeProjectionImpl(proj.projectionKind, starProjectedOrArrayType(argType))
-            else StarProjectionImpl(classType.constructor.parameters[i])
+    // It is impossible to use star projections, because Array<Int>::class differ from Array<String>::class :
+    // detailed information about type arguments required for class references on jvm
+    fun replaceArgumentsWithUpperBounds(classType: KotlinType): KotlinType {
+        val replacement = classType.arguments.map { projection ->
+            TypeProjectionImpl(projection.projectionKind, replaceArgumentsWithUpperBounds(projection.type.representativeUpperBound))
         }
         return classType.replace(replacement)
     }
