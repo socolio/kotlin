@@ -9,16 +9,24 @@ fun tryRenderStructOrUnion(def: StructDef): String? = when (def.kind) {
 
 private fun tryRenderStruct(def: StructDef): String? {
     // The only case when offset starts from non-zero is a inner anonymous struct or union
-    val baseOffset = def.members.filterIsInstance<Field>().firstOrNull()?.offsetBytes ?: 0L
+    val baseOffset = def.fields.firstOrNull()?.offsetBytes ?: 0L
     var offset = 0L
 
     // Members of anonymous struct/union are the fields of enclosing named aggregate and has the corresponding offset.
     // However for the purpose of alignment heuristic we use "immediate" offset, i.e. relative to the immediate parent.
     // Consider for ex. a packed struct containing not packed anonymous inner: their fields are not aligned relative to the root.
-    val isPackedStruct = def.fields.any { (it.offsetBytes - baseOffset) % it.typeAlign != 0L}
 
+    // For the purpose of `isPacked` heuristic we should analyze immediate children only, i.e. ignore the members of nested
+    // anonymous struct / union (included by `fields` getter). For ex. inner anon struct may be packed and its members unaligned,
+    // however this does not imply `packed` attribute at outer struct.
+    val isPackedStruct = def.members.filterIsInstance<Field>().any { (it.offsetBytes - baseOffset) % it.typeAlign != 0L}
+
+    // The following is to deal with the case when a field has big alignment but occasionally its offset is naturally aligned,
+    // so we can't guess it by heuristic. However the enclosing struct must be explicitly aligned.
+//    val maxAlign = def.members.filterIsInstance<Field>().maxOfOrNull { it.typeAlign }
     val maxAlign = def.members.filterIsInstance<Field>().maxOfOrNull { it.typeAlign }
-    val forceAlign = maxAlign?.let { def.align > maxAlign } ?: false
+    val forceAlign = maxAlign?.let { def.align > maxAlign }
+            ?: (def.align > 1)  // Anonymous inner may be empty AND explicitly aligned
 
     return buildString {
         append("struct  { ")
