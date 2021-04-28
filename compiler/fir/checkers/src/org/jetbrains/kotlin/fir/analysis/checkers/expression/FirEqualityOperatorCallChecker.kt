@@ -40,7 +40,7 @@ object FirEqualityCompatibilityChecker : FirEqualityOperatorCallChecker() {
                         "type ${intersectionType.render()}, " +
                         "equality ${expression.render()}, " +
                         "file ${context.containingDeclarations.filterIsInstance<FirFile>().firstOrNull()?.name}",
-                cause = e
+                e
             )
         }
         if (compatibility != ConeTypeCompatibilityChecker.Compatibility.COMPATIBLE) {
