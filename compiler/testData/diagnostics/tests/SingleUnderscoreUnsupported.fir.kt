@@ -17,7 +17,7 @@ fun foo(a: Array<A>) {
     q2(1, "")
 
     val q3: (A) -> Unit = {
-        (_, y) -> y.hashCode()
+        (<!UNDERSCORE_USAGE_WITHOUT_BACKTICKS!>_<!>, y) -> y.hashCode()
     }
     q3(A(2, 3))
 
