@@ -8,11 +8,11 @@ interface B {
 
 open class D: B
 
-open class C: D(), A
+open <!MANY_INTERFACES_MEMBER_NOT_IMPLEMENTED_WARNING!>class C<!>: D(), A
 
 // ------------
 
-class Test: Impl(), CProvider
+<!MANY_INTERFACES_MEMBER_NOT_IMPLEMENTED_WARNING!>class Test<!>: Impl(), CProvider
 
 open class CC
 

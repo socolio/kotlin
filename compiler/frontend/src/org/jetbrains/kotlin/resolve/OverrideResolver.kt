@@ -142,6 +142,14 @@ class OverrideResolver(
                     trace.report(ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED_WARNING.on(klass, klass, abstractInBaseClassNoImpl.first()))
                 }
             }
+            if (conflictingInterfaceMembers.isNotEmpty()) {
+                val interfaceMember = conflictingInterfaceMembers.iterator().next()
+                if (languageVersionSettings.supportsFeature(AbstractClassMemberNotImplementedWithIntermediateAbstractClass)) {
+                    trace.report(MANY_INTERFACES_MEMBER_NOT_IMPLEMENTED.on(klass, klass, interfaceMember))
+                } else {
+                    trace.report(MANY_INTERFACES_MEMBER_NOT_IMPLEMENTED_WARNING.on(klass, klass, interfaceMember))
+                }
+            }
         }
     }
 
@@ -154,7 +162,7 @@ class OverrideResolver(
         protected val abstractInBaseClassNoImpl = linkedSetOf<CallableMemberDescriptor>()
         private val abstractInvisibleSuper = linkedSetOf<CallableMemberDescriptor>()
         private val multipleImplementations = linkedSetOf<CallableMemberDescriptor>()
-        private val conflictingInterfaceMembers = linkedSetOf<CallableMemberDescriptor>()
+        protected val conflictingInterfaceMembers = linkedSetOf<CallableMemberDescriptor>()
         private val conflictingReturnTypes = linkedSetOf<CallableMemberDescriptor>()
 
         private val onceErrorsReported = SmartHashSet<DiagnosticFactoryWithPsiElement<*, *>>()
@@ -271,9 +279,9 @@ class OverrideResolver(
 
             conflictingInterfaceMembers.removeAll(conflictingReturnTypes)
             multipleImplementations.removeAll(conflictingReturnTypes)
-            if (!conflictingInterfaceMembers.isEmpty()) {
+            if (conflictingInterfaceMembers.isNotEmpty()) {
                 trace.report(MANY_INTERFACES_MEMBER_NOT_IMPLEMENTED.on(klass, klass, conflictingInterfaceMembers.iterator().next()))
-            } else if (!multipleImplementations.isEmpty()) {
+            } else if (multipleImplementations.isNotEmpty()) {
                 trace.report(MANY_IMPL_MEMBER_NOT_IMPLEMENTED.on(klass, klass, multipleImplementations.iterator().next()))
             }
         }
@@ -687,7 +695,8 @@ class OverrideResolver(
         private fun checkMissingOverridesByJava8Restrictions(
             relevantDirectlyOverridden: Set<CallableMemberDescriptor>,
             reportingStrategy: CheckInheritedSignaturesReportStrategy,
-            onlyBaseClassMembers: Boolean = false
+            onlyBaseClassMembers: Boolean = false,
+            overriddenInterfaceMembers: MutableList<CallableMemberDescriptor> = SmartList()
         ) {
             // Java 8:
             // -- class should implement an abstract member of a super-class,
@@ -698,44 +707,52 @@ class OverrideResolver(
             var overridesClassMember = false
             var overridesNonAbstractInterfaceMember = false
             var overridesAbstractInBaseClass: CallableMemberDescriptor? = null
-            val overriddenInterfaceMembers = SmartList<CallableMemberDescriptor>()
+            var fakeOverrideInClass: CallableMemberDescriptor? = null
             for (overridden in relevantDirectlyOverridden) {
-                val containingDeclaration = overridden.containingDeclaration
-                if (containingDeclaration is ClassDescriptor) {
-                    if (containingDeclaration.kind == ClassKind.CLASS) {
-                        overridesClassMember = true
-                        if (overridden.modality === Modality.ABSTRACT) {
-                            overridesAbstractInBaseClass = overridden
-                        } else if (overridden.kind == FAKE_OVERRIDE && containingDeclaration.modality === Modality.ABSTRACT) {
-                            val newReportingStrategy = if (reportingStrategy is CollectErrorInformationForInheritedMembersStrategy) {
-                                reportingStrategy.toDeprecationStrategy()
-                            } else reportingStrategy
-                            checkMissingOverridesByJava8Restrictions(
-                                overridden.computeRelevantDirectlyOverridden(),
-                                reportingStrategy = newReportingStrategy,
-                                onlyBaseClassMembers = true
-                            )
-                            if (newReportingStrategy is CollectWarningInformationForInheritedMembersStrategy) {
-                                newReportingStrategy.doReportErrors()
-                            }
-                        }
-                    } else if (containingDeclaration.kind == ClassKind.INTERFACE) {
-                        overriddenInterfaceMembers.add(overridden)
-                        if (overridden.modality !== Modality.ABSTRACT) {
-                            overridesNonAbstractInterfaceMember = true
-                        }
+                val containingDeclaration = overridden.containingDeclaration as? ClassDescriptor ?: continue
+                if (containingDeclaration.kind == ClassKind.CLASS) {
+                    if (overridden.kind == FAKE_OVERRIDE && !containingDeclaration.isExpect) {
+                        // Fake override in a class in fact can mean an interface member
+                        // We will process it at the end
+                        // Note: with expect containing class, the situation is unclear, so we miss this case
+                        // See extendExpectedClassWithAbstractMember.kt (BaseA, BaseAImpl, DerivedA1)
+                        fakeOverrideInClass = overridden
+                    }
+                    overridesClassMember = true
+                    if (overridden.modality === Modality.ABSTRACT) {
+                        overridesAbstractInBaseClass = overridden
+                    }
+                } else if (containingDeclaration.kind == ClassKind.INTERFACE) {
+                    overriddenInterfaceMembers.add(overridden)
+                    if (overridden.modality !== Modality.ABSTRACT) {
+                        overridesNonAbstractInterfaceMember = true
                     }
                 }
             }
 
             if (overridesAbstractInBaseClass != null) {
                 reportingStrategy.abstractBaseClassMemberNotImplemented(overridesAbstractInBaseClass)
-            }
-            if (!onlyBaseClassMembers && !overridesClassMember &&
+            } else if (!onlyBaseClassMembers && !overridesClassMember &&
                 overridesNonAbstractInterfaceMember && overriddenInterfaceMembers.size > 1
             ) {
                 for (member in overriddenInterfaceMembers) {
                     reportingStrategy.conflictingInterfaceMemberNotImplemented(member)
+                }
+            } else if (fakeOverrideInClass != null) {
+                val newReportingStrategy = if (reportingStrategy is CollectErrorInformationForInheritedMembersStrategy) {
+                    reportingStrategy.toDeprecationStrategy()
+                } else reportingStrategy
+                checkMissingOverridesByJava8Restrictions(
+                    fakeOverrideInClass.computeRelevantDirectlyOverridden(),
+                    reportingStrategy = newReportingStrategy,
+                    // Note: we don't report MANY_INTERFACES_MEMBER_NOT_IMPLEMENTED_WARNING
+                    // in case all interface members are derived from fakeOverrideInClass
+                    // (in this case we already have warning or error on its container)
+                    onlyBaseClassMembers = overriddenInterfaceMembers.isEmpty(),
+                    overriddenInterfaceMembers
+                )
+                if (newReportingStrategy is CollectWarningInformationForInheritedMembersStrategy) {
+                    newReportingStrategy.doReportErrors()
                 }
             }
         }
