@@ -98,15 +98,23 @@ open class KotlinJsIrLink @Inject constructor(
 
     override fun callCompilerAsync(args: K2JSCompilerArguments, sourceRoots: SourceRoots, changedFiles: ChangedFiles) {
         if (incrementalJsIr) {
-            val visitedDependencies = mutableSetOf<ResolvedDependency>()
-            val visitedFiles = mutableSetOf<File>()
             val visitedCompilations = mutableSetOf<KotlinCompilation<*>>()
             val allCacheDirectories = mutableSetOf<File>()
 
+            val cacheBuilder = CacheBuilder(
+                buildDir,
+                kotlinOptions,
+                libraryFilter,
+                compilerRunner,
+                { createCompilerArgs() },
+                { objects.fileCollection() },
+                computedCompilerClasspath,
+                logger,
+                reportingSettings
+            )
             val cacheArgs = visitAssociated(
                 compilation,
-                visitedDependencies,
-                visitedFiles,
+                cacheBuilder,
                 visitedCompilations,
                 allCacheDirectories
             )
@@ -120,44 +128,31 @@ open class KotlinJsIrLink @Inject constructor(
 
     private fun visitAssociated(
         associated: KotlinCompilation<*>,
-        visitedDependencies: MutableSet<ResolvedDependency>,
-        visitedFiles: MutableSet<File>,
+        cacheBuilder: CacheBuilder,
         visitedCompilations: MutableSet<KotlinCompilation<*>>,
         visitedCacheDirectories: MutableSet<File>
     ): List<File> {
         if (associated in visitedCompilations) return emptyList()
         visitedCompilations.add(associated)
 
-        val prevRes = associated.associateWith
+        val associatedCaches = associated.associateWith
             .flatMap { compilation ->
                 visitAssociated(
                     compilation,
-                    visitedDependencies,
-                    visitedFiles,
+                    cacheBuilder,
                     visitedCompilations,
                     visitedCacheDirectories
                 )
             }
 
-        return prevRes + CacheBuilder(
-            buildDir,
-            project.configurations.getByName(associated.compileDependencyConfigurationName),
-            associated.output.classesDirs,
-            kotlinOptions,
-            libraryFilter,
-            compilerRunner,
-            { createCompilerArgs() },
-            computedCompilerClasspath,
-            logger,
-            objects.fileCollection(),
-            reportingSettings,
-            visitedDependencies,
-            visitedFiles,
-            prevRes
-        )
-            .buildCompilerArgs()
-            .filter { it !in visitedCacheDirectories }
-            .also { visitedCacheDirectories.addAll(it) }
+        return cacheBuilder
+            .buildCompilerArgs(
+                project.configurations.getByName(associated.compileDependencyConfigurationName),
+                associated.output.classesDirs,
+                associatedCaches
+            )
+//            .filter { it !in visitedCacheDirectories }
+//            .also { visitedCacheDirectories.addAll(it) }
     }
 
     override fun setupCompilerArgs(args: K2JSCompilerArguments, defaultsOnly: Boolean, ignoreClasspathResolutionErrors: Boolean) {
@@ -181,25 +176,31 @@ open class KotlinJsIrLink @Inject constructor(
 
 internal class CacheBuilder(
     private val buildDir: File,
-    private val compileClasspath: Configuration,
-    private val additionalForResolve: FileCollection?,
     private val kotlinOptions: KotlinJsOptions,
     private val libraryFilter: (File) -> Boolean,
     private val compilerRunner: GradleCompilerRunner,
     private val compilerArgsFactory: () -> K2JSCompilerArguments,
+    private val objectFilesFactory: () -> FileCollection,
     private val computedCompilerClasspath: List<File>,
     private val logger: Logger,
-    private val outputFiles: FileCollection,
-    private val reportingSettings: ReportingSettings,
-    private val visitedDependencies: MutableSet<ResolvedDependency>,
-    private val visitedFiles: MutableSet<File>,
-    private val associatedCaches: List<File>
+    private val reportingSettings: ReportingSettings
 ) {
     val rootCacheDirectory by lazy {
         buildDir.resolve("klib/cache")
     }
 
-    fun buildCompilerArgs(): List<File> {
+    private val visitedDependencies = mutableSetOf<ResolvedDependency>()
+    private val visitedFiles = mutableSetOf<File>()
+    private val visitedCacheDirectories = mutableSetOf<File>()
+
+    private val objectFiles
+        get() = objectFilesFactory()
+
+    fun buildCompilerArgs(
+        compileClasspath: Configuration,
+        additionalForResolve: FileCollection?,
+        associatedCaches: List<File>
+    ): List<File> {
 
         val allCacheDirectories = mutableListOf<File>()
         val visitedDependenciesForCache = mutableSetOf<ResolvedDependency>()
@@ -207,9 +208,7 @@ internal class CacheBuilder(
         compileClasspath.resolvedConfiguration.firstLevelModuleDependencies
             .forEach { dependency ->
                 ensureDependencyCached(
-                    dependency,
-                    visitedDependencies,
-                    visitedFiles
+                    dependency
                 )
                 if (dependency !in visitedDependenciesForCache) {
                     (listOf(dependency) + getAllDependencies(dependency))
@@ -229,7 +228,6 @@ internal class CacheBuilder(
             cacheDirectory.mkdirs()
             runCompiler(
                 file,
-                visitedFiles,
                 compileClasspath.files,
                 cacheDirectory,
                 (allCacheDirectories + associatedCaches).distinct()
@@ -237,19 +235,19 @@ internal class CacheBuilder(
             allCacheDirectories.add(cacheDirectory)
         }
 
-        return allCacheDirectories
+        return associatedCaches + allCacheDirectories
+            .filter { it !in visitedCacheDirectories }
+            .also { visitedCacheDirectories.addAll(it) }
     }
 
     private fun ensureDependencyCached(
-        dependency: ResolvedDependency,
-        visitedDependency: MutableSet<ResolvedDependency>,
-        visitedFiles: MutableSet<File>
+        dependency: ResolvedDependency
     ) {
-        if (dependency in visitedDependency) return
-        visitedDependency.add(dependency)
+        if (dependency in visitedDependencies) return
+        visitedDependencies.add(dependency)
 
         dependency.children
-            .forEach { ensureDependencyCached(it, visitedDependency, visitedFiles) }
+            .forEach { ensureDependencyCached(it) }
 
         val artifactsToAddToCache = dependency.moduleArtifacts
             .filter { libraryFilter(it.file) }
@@ -267,7 +265,6 @@ internal class CacheBuilder(
         for (library in artifactsToAddToCache) {
             runCompiler(
                 library.file,
-                visitedFiles,
                 getAllDependencies(dependency)
                     .flatMap { it.moduleArtifacts }
                     .map { it.file },
@@ -279,7 +276,6 @@ internal class CacheBuilder(
 
     fun runCompiler(
         file: File,
-        visitedFiles: MutableSet<File>,
         dependencies: Collection<File>,
         cacheDirectory: File,
         dependenciesCacheDirectories: Collection<File>
@@ -314,7 +310,7 @@ internal class CacheBuilder(
             computedCompilerClasspath,
             messageCollector,
             outputItemCollector,
-            outputFiles = outputFiles,
+            outputFiles = objectFiles,
             reportingSettings = reportingSettings
         )
 
