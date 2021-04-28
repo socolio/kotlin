@@ -40,8 +40,6 @@ object FirNotImplementedOverrideChecker : FirClassChecker() {
         val source = declaration.source ?: return
         val sourceKind = source.kind
         if (sourceKind is FirFakeSourceElementKind && sourceKind != FirFakeSourceElementKind.EnumInitializer) return
-        val modality = declaration.modality()
-        if (modality == Modality.ABSTRACT || modality == Modality.SEALED) return
         if (declaration is FirRegularClass && declaration.isExpect) return
         val classKind = declaration.classKind
         if (classKind == ClassKind.ANNOTATION_CLASS || classKind == ClassKind.ENUM_CLASS) return
@@ -118,6 +116,7 @@ object FirNotImplementedOverrideChecker : FirClassChecker() {
             return true
         }
 
+        val modality = declaration.modality()
         for (name in classScope.getCallableNames()) {
             classScope.processFunctionsByName(name) { namedFunctionSymbol ->
                 val simpleFunction = namedFunctionSymbol.fir
@@ -129,6 +128,7 @@ object FirNotImplementedOverrideChecker : FirClassChecker() {
                         return@processFunctionsByName
                     }
                 }
+                if (modality == Modality.ABSTRACT || modality == Modality.SEALED) return@processFunctionsByName
                 if (!simpleFunction.shouldBeImplemented()) return@processFunctionsByName
                 if (declaration is FirRegularClass && declaration.isData && simpleFunction.matchesDataClassSyntheticMemberSignatures) {
                     return@processFunctionsByName
@@ -152,6 +152,7 @@ object FirNotImplementedOverrideChecker : FirClassChecker() {
                         return@processPropertiesByName
                     }
                 }
+                if (modality == Modality.ABSTRACT || modality == Modality.SEALED) return@processPropertiesByName
                 if (!property.shouldBeImplemented()) return@processPropertiesByName
 
                 if (property.isInvisible()) {
