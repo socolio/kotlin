@@ -15,6 +15,7 @@ import org.jetbrains.kotlin.descriptors.EffectiveVisibility
 import org.jetbrains.kotlin.descriptors.Visibility
 import org.jetbrains.kotlin.diagnostics.WhenMissingCase
 import org.jetbrains.kotlin.fir.PrivateForInline
+import org.jetbrains.kotlin.fir.checkers.generator.diagnostics.PositioningStrategy.REFERENCED_NAME_BY_QUALIFIED
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.expressions.FirExpression
 import org.jetbrains.kotlin.fir.symbols.AbstractFirBasedSymbol
@@ -71,7 +72,7 @@ object DIAGNOSTICS_LIST : DiagnosticList() {
         val INVISIBLE_REFERENCE by error<PsiElement>(PositioningStrategy.REFERENCE_BY_QUALIFIED) {
             parameter<Symbol>("reference")
         }
-        val UNRESOLVED_REFERENCE by error<PsiElement>(PositioningStrategy.REFERENCED_NAME_BY_QUALIFIED) {
+        val UNRESOLVED_REFERENCE by error<PsiElement>(REFERENCED_NAME_BY_QUALIFIED) {
             parameter<String>("reference")
         }
         val UNRESOLVED_LABEL by error<PsiElement>()
@@ -84,12 +85,13 @@ object DIAGNOSTICS_LIST : DiagnosticList() {
 
     val CALL_RESOLUTION by object : DiagnosticGroup("Call resolution") {
         val CREATING_AN_INSTANCE_OF_ABSTRACT_CLASS by error<KtExpression>()
+        val PROTECTED_CONSTRUCTOR_NOT_IN_SUPER_CALL by error<KtExpression>(REFERENCED_NAME_BY_QUALIFIED)
     }
 
     val SUPER by object : DiagnosticGroup("Super") {
-        val SUPER_IS_NOT_AN_EXPRESSION by error<PsiElement>(PositioningStrategy.REFERENCED_NAME_BY_QUALIFIED)
-        val SUPER_NOT_AVAILABLE by error<PsiElement>(PositioningStrategy.REFERENCED_NAME_BY_QUALIFIED)
-        val ABSTRACT_SUPER_CALL by error<PsiElement>(PositioningStrategy.REFERENCED_NAME_BY_QUALIFIED)
+        val SUPER_IS_NOT_AN_EXPRESSION by error<PsiElement>(REFERENCED_NAME_BY_QUALIFIED)
+        val SUPER_NOT_AVAILABLE by error<PsiElement>(REFERENCED_NAME_BY_QUALIFIED)
+        val ABSTRACT_SUPER_CALL by error<PsiElement>(REFERENCED_NAME_BY_QUALIFIED)
         val INSTANCE_ACCESS_BEFORE_SUPER_CALL by error<PsiElement> {
             parameter<String>("target")
         }

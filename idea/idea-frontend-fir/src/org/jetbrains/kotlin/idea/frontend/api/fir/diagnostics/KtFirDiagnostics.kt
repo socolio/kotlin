@@ -186,6 +186,10 @@ sealed class KtFirDiagnostic<PSI: PsiElement> : KtDiagnosticWithPsi<PSI> {
         override val diagnosticClass get() = CreatingAnInstanceOfAbstractClass::class
     }
 
+    abstract class ProtectedConstructorNotInSuperCall : KtFirDiagnostic<KtExpression>() {
+        override val diagnosticClass get() = ProtectedConstructorNotInSuperCall::class
+    }
+
     abstract class SuperIsNotAnExpression : KtFirDiagnostic<PsiElement>() {
         override val diagnosticClass get() = SuperIsNotAnExpression::class
     }

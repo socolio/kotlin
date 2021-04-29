@@ -239,6 +239,12 @@ internal val KT_DIAGNOSTIC_CONVERTER = KtDiagnosticConverterBuilder.buildConvert
             token,
         )
     }
+    add(FirErrors.PROTECTED_CONSTRUCTOR_NOT_IN_SUPER_CALL) { firDiagnostic ->
+        ProtectedConstructorNotInSuperCallImpl(
+            firDiagnostic as FirPsiDiagnostic<*>,
+            token,
+        )
+    }
     add(FirErrors.SUPER_IS_NOT_AN_EXPRESSION) { firDiagnostic ->
         SuperIsNotAnExpressionImpl(
             firDiagnostic as FirPsiDiagnostic<*>,
