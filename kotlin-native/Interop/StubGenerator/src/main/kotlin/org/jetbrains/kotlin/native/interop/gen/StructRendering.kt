@@ -14,7 +14,7 @@ private fun tryRenderStruct(def: StructDef): String? {
 
     // Members of anonymous struct/union are the fields of enclosing named aggregate and has the corresponding offset.
     // However for the purpose of alignment heuristic we use "immediate" offset, i.e. relative to the immediate parent.
-    // Consider for ex. a packed struct containing not packed anonymous inner: their fields are not aligned relative to the root.
+    // Consider for ex. a packed struct containing not packed anonymous `Inner`: inner fields are not aligned relative to the root.
 
     // For the purpose of `isPacked` heuristic we should analyze immediate children only, i.e. ignore the members of nested
     // anonymous struct / union (included by `fields` getter). For ex. inner anon struct may be packed and its members unaligned,
@@ -23,7 +23,6 @@ private fun tryRenderStruct(def: StructDef): String? {
 
     // The following is to deal with the case when a field has big alignment but occasionally its offset is naturally aligned,
     // so we can't guess it by heuristic. However the enclosing struct must be explicitly aligned.
-//    val maxAlign = def.members.filterIsInstance<Field>().maxOfOrNull { it.typeAlign }
     val maxAlign = def.members.filterIsInstance<Field>().maxOfOrNull { it.typeAlign }
     val forceAlign = maxAlign?.let { def.align > maxAlign }
             ?: (def.align > 1)  // Anonymous inner may be empty AND explicitly aligned
@@ -32,9 +31,9 @@ private fun tryRenderStruct(def: StructDef): String? {
         append("struct  { ")
 
         def.members.forEach { it ->
-            val immediateOffset = it.offsetBytes - baseOffset
             val decl = when (it) {
                 is Field -> {
+                    val immediateOffset = it.offsetBytes - baseOffset
                     val defaultAlignment = if (isPackedStruct) 1L else it.typeAlign
                     val alignment = guessAlignment(offset, immediateOffset, defaultAlignment) ?: return null
                     offset = immediateOffset + it.typeSize
@@ -46,7 +45,11 @@ private fun tryRenderStruct(def: StructDef): String? {
                 is BitField, // TODO: tryRenderVar(it.type, name)?.plus(" : ${it.size}")
                 is IncompleteField -> null // e.g. flexible array member.
                 is AnonymousInnerRecord -> {
-                    offset = immediateOffset + it.typeSize
+                    // No need to advance offset if offsetBytes is null 'cause it means that record is empty. Assert that.
+                    assert(it.offsetBytes != null || it.typeSize == 0L)
+                    it.offsetBytes?.let { offsetBytes ->
+                        offset = offsetBytes - baseOffset + it.typeSize
+                    }
                     tryRenderStructOrUnion(it.def)
                 }
             } ?: return null
@@ -65,20 +68,26 @@ private fun guessAlignment(offset: Long, paddedOffset: Long, defaultAlignment: L
 
 private fun alignUp(x: Long, alignment: Long): Long = (x + alignment - 1) and ((alignment - 1).inv())
 
-private fun tryRenderUnion(def: StructDef): String? =
-        buildString {
-            append("union { ")
-            def.members.forEach { it ->
-                val name = it.name
-                val decl = when (it) {
-                    is Field -> tryRenderVar(it.type, name)
-                    is BitField, is IncompleteField -> null
-                    is AnonymousInnerRecord -> tryRenderStructOrUnion(it.def)
-                } ?: return null
-                append("$decl; ")
-            }
-            append("}")
+private fun tryRenderUnion(def: StructDef): String? {
+    val maxAlign = def.members.filterIsInstance<Field>().maxOfOrNull { it.typeAlign }
+    val forceAlign = maxAlign?.let { def.align > maxAlign }
+            ?: (def.align > 1)  // Anonymous inner may be empty AND explicitly aligned
+
+    return buildString {
+        append("union { ")
+        def.members.forEach { it ->
+            val name = it.name
+            val decl = when (it) {
+                is Field -> tryRenderVar(it.type, name)
+                is BitField, is IncompleteField -> null
+                is AnonymousInnerRecord -> tryRenderStructOrUnion(it.def)
+            } ?: return null
+            append("$decl; ")
         }
+        append("}")
+        if (forceAlign) append(" __attribute__((aligned(${def.align})))")
+    }
+}
 
 private fun tryRenderVar(type: Type, name: String): String? = when (type) {
     CharType, is BoolType -> "char $name"
@@ -95,9 +104,13 @@ private fun tryRenderVar(type: Type, name: String): String? = when (type) {
     else -> null
 }
 
-private val <T : StructMember> T.offsetBytes: Long
+private val Field.offsetBytes: Long
     get() {
-        if (offset == null) return 0 // Will be ignored anyway
-        require((offset as Long) % 8 == 0L)
-        return (offset as Long) / 8
+        require(this.offset % 8 == 0L)
+        return this.offset / 8
+    }
+
+private val AnonymousInnerRecord.offsetBytes: Long?
+    get() {
+        return def.fields.firstOrNull()?.offsetBytes
     }
