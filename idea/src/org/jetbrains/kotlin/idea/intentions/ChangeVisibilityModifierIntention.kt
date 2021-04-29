@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2020 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2021 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
@@ -12,7 +12,9 @@ import org.jetbrains.kotlin.descriptors.CallableDescriptor
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptorWithVisibility
 import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.idea.KotlinBundle
+import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptorIfAny
 import org.jetbrains.kotlin.idea.core.*
+import org.jetbrains.kotlin.idea.project.languageVersionSettings
 import org.jetbrains.kotlin.idea.util.runCommandOnAllExpectAndActualDeclaration
 import org.jetbrains.kotlin.lexer.KtModifierKeywordToken
 import org.jetbrains.kotlin.lexer.KtTokens
@@ -21,6 +23,8 @@ import org.jetbrains.kotlin.psi.psiUtil.startOffset
 import org.jetbrains.kotlin.psi.psiUtil.toVisibility
 import org.jetbrains.kotlin.psi.psiUtil.visibilityModifier
 import org.jetbrains.kotlin.psi.psiUtil.visibilityModifierType
+import org.jetbrains.kotlin.resolve.checkers.ExplicitApiDeclarationChecker
+import org.jetbrains.kotlin.resolve.checkers.explicitApiEnabled
 
 open class ChangeVisibilityModifierIntention protected constructor(val modifier: KtModifierKeywordToken) :
     SelfTargetingRangeIntention<KtDeclaration>(KtDeclaration::class.java, KotlinBundle.lazyMessage("make.0", modifier.value)) {
@@ -73,10 +77,12 @@ open class ChangeVisibilityModifierIntention protected constructor(val modifier:
 
     override fun applyTo(element: KtDeclaration, editor: Editor?) {
         val factory = KtPsiFactory(element)
-        element.runCommandOnAllExpectAndActualDeclaration(KotlinBundle.message("change.visibility.modifier"), writeAction = true) {
-            it.setVisibility(modifier)
-            if (it is KtPropertyAccessor) {
-                it.modifierList?.nextSibling?.replace(factory.createWhiteSpace())
+        element.runCommandOnAllExpectAndActualDeclaration(KotlinBundle.message("change.visibility.modifier"), writeAction = true) { declaration ->
+            val addImplicitVisibilityModifier = declaration.languageVersionSettings.explicitApiEnabled
+                    && declaration.resolveToDescriptorIfAny()?.let { !ExplicitApiDeclarationChecker.explicitVisibilityIsNotRequired(it) } == true
+            declaration.setVisibility(modifier, addImplicitVisibilityModifier = addImplicitVisibilityModifier)
+            if (declaration is KtPropertyAccessor) {
+                declaration.modifierList?.nextSibling?.replace(factory.createWhiteSpace())
             }
         }
     }
