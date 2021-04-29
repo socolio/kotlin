@@ -135,12 +135,14 @@ val Field.isAligned: Boolean
 
 class BitField(name: String, val type: Type, override val offset: Long, val size: Int) : StructMember(name)
 
-class IncompleteField(name: String, val type: Type) : StructMember(name) {
+class IncompleteField(name: String) : StructMember(name) {
     override val offset: Long? get() = null
 }
 
-class AnonymousInnerRecord(val def: StructDef, override val offset: Long, val typeSize: Long, val typeAlign: Long)
-    : StructMember("")
+class AnonymousInnerRecord(val def: StructDef) : StructMember("") {
+    override val offset: Long? get() = null
+    val typeSize: Long = def.size
+}
 
 /**
  * C struct declaration.

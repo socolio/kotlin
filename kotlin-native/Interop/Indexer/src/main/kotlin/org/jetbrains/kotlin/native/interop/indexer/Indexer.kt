@@ -216,18 +216,14 @@ internal class NativeIndexImpl(val library: NativeLibrary, val verbose: Boolean 
                         assert(fieldCursor.type.kind == CXType_Record)
                         // TODO: clang_Cursor_getOffsetOfField is OK for anonymous, but only for the 1st level of such nesting
                         AnonymousInnerRecord(
-                                createStructDef(clang_getCursorDefinition(declCursor), offsetRoot),
-                                clang_Cursor_getOffsetOfField(fieldCursor),
-                                clang_Type_getSizeOf(fieldCursor.type),
-                                clang_Type_getAlignOf(fieldCursor.type)
-                        )
+                                createStructDef(clang_getCursorDefinition(declCursor), offsetRoot))
                     }
                     else -> {
                         val name = getCursorSpelling(fieldCursor)
                         val fieldType = convertCursorType(fieldCursor)
                         val offset = clang_Type_getOffsetOf(offsetRoot.type, name)
                         if (offset < 0) {
-                            IncompleteField(name, fieldType)
+                            IncompleteField(name)
                         } else if (clang_Cursor_isBitField(fieldCursor) == 0) {
                             val canonicalFieldType = clang_getCanonicalType(fieldCursor.type)
                             Field(
