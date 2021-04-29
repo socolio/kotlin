@@ -9,6 +9,12 @@ import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.FirSessionComponent
 
 abstract class FirCachesFactory : FirSessionComponent {
+    abstract fun <K : Any, V, CONTEXT> createCache(provider: FirCacheValueProvider<K, V, CONTEXT>): FirCache<K, V, CONTEXT>
+
+    abstract fun <K : Any, V, CONTEXT, DATA> createCacheWithPostCompute(
+        provider: FirCacheValueProviderWithPostCompute<K, V, CONTEXT, DATA>
+    ): FirCache<K, V, CONTEXT>
+
     /**
      * Creates a cache with returns a value by key on demand if it is computed
      * Otherwise computes the value in [createValue] and caches it for future invocations
@@ -18,7 +24,12 @@ abstract class FirCachesFactory : FirSessionComponent {
      * Where:
      * [CONTEXT] -- type of value which be used to create value by [createValue]
      */
-    abstract fun <K : Any, V, CONTEXT> createCache(createValue: (K, CONTEXT) -> V): FirCache<K, V, CONTEXT>
+    inline fun <K : Any, V, CONTEXT> createCache(crossinline createValue: (K, CONTEXT) -> V): FirCache<K, V, CONTEXT> =
+        createCache(
+            object : FirCacheValueProvider<K, V, CONTEXT>() {
+                override fun createValue(key: K, context: CONTEXT): V = createValue(key, context)
+            }
+        )
 
     /**
      * Creates a cache with returns a caches value on demand if it is computed
@@ -33,10 +44,25 @@ abstract class FirCachesFactory : FirSessionComponent {
      *  [CONTEXT] -- type of value which be used to create value by [createValue]
      *  [DATA] -- type of additional data which will be passed from [createValue] to [postCompute]
      */
-    abstract fun <K : Any, V, CONTEXT, DATA> createCacheWithPostCompute(
-        createValue: (K, CONTEXT) -> Pair<V, DATA>,
-        postCompute: (K, V, DATA) -> Unit
-    ): FirCache<K, V, CONTEXT>
+    inline fun <K : Any, V, CONTEXT, DATA> createCacheWithPostCompute(
+        crossinline createValue: (K, CONTEXT) -> Pair<V, DATA>,
+        crossinline postCompute: (K, V, DATA) -> Unit
+    ): FirCache<K, V, CONTEXT> = createCacheWithPostCompute(object : FirCacheValueProviderWithPostCompute<K, V, CONTEXT, DATA>() {
+        override fun createValue(key: K, context: CONTEXT): Pair<V, DATA> = createValue(key, context)
+
+        override fun postCompute(key: K, value: V, data: DATA) {
+            postCompute(key, value, data)
+        }
+    })
+}
+
+abstract class FirCacheValueProvider<K : Any, V, CONTEXT> {
+    abstract fun createValue(key: K, context: CONTEXT): V
+}
+
+abstract class FirCacheValueProviderWithPostCompute<K : Any, V, CONTEXT, DATA> {
+    abstract fun createValue(key: K, context: CONTEXT): Pair<V, DATA>
+    abstract fun postCompute(key: K, value: V, data: DATA)
 }
 
 val FirSession.firCachesFactory: FirCachesFactory by FirSession.sessionComponentAccessor()

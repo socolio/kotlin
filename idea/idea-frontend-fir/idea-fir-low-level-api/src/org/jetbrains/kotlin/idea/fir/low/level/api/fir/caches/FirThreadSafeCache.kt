@@ -6,15 +6,16 @@
 package org.jetbrains.kotlin.idea.fir.low.level.api.fir.caches
 
 import org.jetbrains.kotlin.fir.caches.FirCache
+import org.jetbrains.kotlin.fir.caches.FirCacheValueProvider
 import java.util.concurrent.ConcurrentHashMap
 
 internal class FirThreadSafeCache<K : Any, V, CONTEXT>(
-    private val createValue: (K, CONTEXT) -> V
+    private val provider: FirCacheValueProvider<K, V, CONTEXT>
 ) : FirCache<K, V, CONTEXT>() {
     private val map = ConcurrentHashMap<K, Any>()
 
     override fun getValue(key: K, context: CONTEXT): V =
-        map.getOrPutWithNullableValue(key) { createValue(it, context) }
+        map.getOrPutWithNullableValue(key) { provider.createValue(it, context) }
 
     override fun getValueIfComputed(key: K): V? =
         map[key]?.nullValueToNull()
