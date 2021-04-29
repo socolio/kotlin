@@ -7,19 +7,37 @@ fun tryRenderStructOrUnion(def: StructDef): String? = when (def.kind) {
     StructDef.Kind.UNION -> tryRenderUnion(def)
 }
 
+/**
+ * Members of anonymous struct/union are the fields of enclosing named aggregate and has the corresponding offset.
+ * However for the purpose of alignment heuristic we use "immediate" offset, i.e. relative to the immediate parent.
+ * Consider for ex. a packed struct containing not packed anonymous `Inner`: inner fields are not aligned relative to the root.
+ *
+ * For the purpose of `isPacked` heuristic we should analyze immediate children only, i.e. ignore the members of nested
+ * anonymous struct / union (included by `fields` getter). For ex. inner anon struct may be packed and its members unaligned,
+ * however this does not imply `packed` attribute at outer struct.
+ *
+ * Empty inner records (ie offsetBytes == null) does not affect `packed` heuristic and shall be ignored here.
+ * Unsupported members (ie BitField and IncompleteField) to be ignored too but won't be compiled anyway.
+ */
+private val StructDef.isPacked: Boolean
+    get() {
+        val baseOffset = fields.firstOrNull()?.offsetBytes ?: return false
+        return members.any { member ->
+            when (member) {
+                is Field -> (member.offsetBytes - baseOffset) % member.typeAlign != 0L
+                is AnonymousInnerRecord ->
+                    member.offsetBytes?.let { (it - baseOffset) % member.def.align != 0L } ?: false
+                else -> false
+            }
+        }
+    }
+
 private fun tryRenderStruct(def: StructDef): String? {
     // The only case when offset starts from non-zero is a inner anonymous struct or union
     val baseOffset = def.fields.firstOrNull()?.offsetBytes ?: 0L
     var offset = 0L
 
-    // Members of anonymous struct/union are the fields of enclosing named aggregate and has the corresponding offset.
-    // However for the purpose of alignment heuristic we use "immediate" offset, i.e. relative to the immediate parent.
-    // Consider for ex. a packed struct containing not packed anonymous `Inner`: inner fields are not aligned relative to the root.
-
-    // For the purpose of `isPacked` heuristic we should analyze immediate children only, i.e. ignore the members of nested
-    // anonymous struct / union (included by `fields` getter). For ex. inner anon struct may be packed and its members unaligned,
-    // however this does not imply `packed` attribute at outer struct.
-    val isPackedStruct = def.members.filterIsInstance<Field>().any { (it.offsetBytes - baseOffset) % it.typeAlign != 0L}
+    val isPackedStruct = def.isPacked
 
     // The following is to deal with the case when a field has big alignment but occasionally its offset is naturally aligned,
     // so we can't guess it by heuristic. However the enclosing struct must be explicitly aligned.
