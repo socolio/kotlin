@@ -21,6 +21,7 @@ dependencies {
     compileOnly(project(":compiler:ir.tree.impl"))
     compileOnly(project(":plugins:parcelize:parcelize-runtime"))
     compileOnly(project(":kotlin-android-extensions-runtime"))
+    compileOnly(project(":kotlin-project-model"))
     compileOnly(intellijCoreDep()) { includeJars("intellij-core") }
     compileOnly(intellijDep()) { includeJars("asm-all", rootProject = rootProject) }
 

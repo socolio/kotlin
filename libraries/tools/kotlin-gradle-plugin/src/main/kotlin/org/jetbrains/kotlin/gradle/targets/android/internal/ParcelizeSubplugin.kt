@@ -12,9 +12,12 @@ import org.gradle.api.Project
 import org.gradle.api.provider.Provider
 import org.jetbrains.kotlin.gradle.plugin.*
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinJvmAndroidCompilation
+import org.jetbrains.kotlin.gradle.plugin.mpp.pm20.GradleKpmCompilerPlugin
+import org.jetbrains.kotlin.parcelize.ParcelizeKpmCompilerPlugin
+import org.jetbrains.kotlin.project.model.KpmCompilerPlugin
 
 // Use apply plugin: 'kotlin-parcelize' to enable Android Extensions in an Android project.
-class ParcelizeSubplugin : KotlinCompilerPluginSupportPlugin {
+class ParcelizeSubplugin : KotlinCompilerPluginSupportPlugin, GradleKpmCompilerPlugin {
     override fun apply(target: Project) {
         addParcelizeRuntime(target)
 
@@ -44,6 +47,8 @@ class ParcelizeSubplugin : KotlinCompilerPluginSupportPlugin {
 
     override fun getCompilerPluginId() = "org.jetbrains.kotlin.parcelize"
     override fun getPluginArtifact(): SubpluginArtifact = JetBrainsSubpluginArtifact(artifactId = "kotlin-parcelize-compiler")
+
+    override val kpmCompilerPlugin = ParcelizeKpmCompilerPlugin
 
     private fun addParcelizeRuntime(project: Project) {
         val kotlinPluginVersion = project.getKotlinPluginVersion() ?: run {
