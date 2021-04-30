@@ -13,6 +13,7 @@ import org.jetbrains.kotlin.fir.expressions.impl.FirElseIfTrueCondition
 import org.jetbrains.kotlin.fir.expressions.impl.FirEmptyExpressionBlock
 import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
 import org.jetbrains.kotlin.fir.resolve.ResolutionMode
+import org.jetbrains.kotlin.fir.resolve.calls.isUnitOrFlexibleUnit
 import org.jetbrains.kotlin.fir.resolve.transformers.FirSyntheticCallGenerator
 import org.jetbrains.kotlin.fir.resolve.transformers.FirWhenExhaustivenessTransformer
 import org.jetbrains.kotlin.fir.resolve.withExpectedType
@@ -215,13 +216,20 @@ class FirControlFlowStatementsResolveTransformer(transformer: FirBodyResolveTran
         elvisExpression.transformAnnotations(transformer, data)
 
         val expectedType = data.expectedType?.coneTypeSafe<ConeKotlinType>()
-        val resolutionModeForLhs = withExpectedType(expectedType?.withNullability(ConeNullability.NULLABLE))
+        val mayBeCoercionToUnitApplied = (data as? ResolutionMode.WithExpectedType)?.mayBeCoercionToUnitApplied == true
+
+        val resolutionModeForLhs =
+            if (mayBeCoercionToUnitApplied && expectedType?.isUnitOrFlexibleUnit == true)
+                withExpectedType(expectedType, mayBeCoercionToUnitApplied = true)
+            else
+                withExpectedType(expectedType?.withNullability(ConeNullability.NULLABLE))
+
         elvisExpression.transformLhs(transformer, resolutionModeForLhs)
         dataFlowAnalyzer.exitElvisLhs(elvisExpression)
 
         val resolutionModeForRhs = withExpectedType(
             expectedType,
-            mayBeCoercionToUnitApplied = (data as? ResolutionMode.WithExpectedType)?.mayBeCoercionToUnitApplied == true
+            mayBeCoercionToUnitApplied = mayBeCoercionToUnitApplied
         )
         elvisExpression.transformRhs(transformer, resolutionModeForRhs)
 
