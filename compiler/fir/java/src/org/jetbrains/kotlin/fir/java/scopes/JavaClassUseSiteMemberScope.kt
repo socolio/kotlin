@@ -139,7 +139,12 @@ class JavaClassUseSiteMemberScope(
     ): FirNamedFunctionSymbol? {
         val specialGetterName = getBuiltinSpecialPropertyGetterName()
         if (specialGetterName != null) {
-            return findGetterByName(specialGetterName.asString(), scope)
+            val getter = findGetterByName(specialGetterName.asString(), scope)
+            //modality check is a hack to skip search be default getter name for enums
+            //for collections in FE 1.0 you can actually override special properties by not-so-special getter name (eg size() -> getSize)
+            if (getter != null || fir.modality == Modality.FINAL) {
+                return getter
+            }
         }
 
         return findGetterByName(JvmAbi.getterName(fir.name.asString()), scope)
