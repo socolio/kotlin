@@ -219,7 +219,11 @@ class FirControlFlowStatementsResolveTransformer(transformer: FirBodyResolveTran
         elvisExpression.transformLhs(transformer, resolutionModeForLhs)
         dataFlowAnalyzer.exitElvisLhs(elvisExpression)
 
-        elvisExpression.transformRhs(transformer, data)
+        val resolutionModeForRhs = withExpectedType(
+            expectedType,
+            mayBeCoercionToUnitApplied = (data as? ResolutionMode.WithExpectedType)?.mayBeCoercionToUnitApplied == true
+        )
+        elvisExpression.transformRhs(transformer, resolutionModeForRhs)
 
         val result = syntheticCallGenerator.generateCalleeForElvisExpression(elvisExpression, resolutionContext)?.let {
             callCompleter.completeCall(it, data).result
