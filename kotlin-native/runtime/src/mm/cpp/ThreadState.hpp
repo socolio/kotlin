@@ -16,6 +16,8 @@ ALWAYS_INLINE ThreadState SwitchThreadState(mm::ThreadData* threadData, ThreadSt
 
 ALWAYS_INLINE void AssertThreadState(mm::ThreadData* threadData, ThreadState expected) noexcept;
 
+ALWAYS_INLINE void AssertThreadState(mm::ThreadData* threadData, std::initializer_list<ThreadState> expected) noexcept;
+
 } // namespace kotlin
 
 #endif // RUNTIME_MM_THREAD_STATE_H
