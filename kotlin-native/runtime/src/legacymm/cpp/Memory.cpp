@@ -3728,3 +3728,5 @@ ALWAYS_INLINE void kotlin::AssertThreadState(MemoryState* thread, ThreadState ex
 MemoryState* kotlin::mm::GetMemoryState() {
     return ::memoryState;
 }
+
+const bool kotlin::kSupportsMultipleMutators = true;

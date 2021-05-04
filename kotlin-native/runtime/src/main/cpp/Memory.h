@@ -440,6 +440,8 @@ ALWAYS_INLINE RUNTIME_NORETURN inline void CallKotlinNoReturn(void(*noreturnKotl
     RuntimeFail("The function must not return");
 }
 
+extern const bool kSupportsMultipleMutators;
+
 } // namespace kotlin
 
 #endif // RUNTIME_MEMORY_H
