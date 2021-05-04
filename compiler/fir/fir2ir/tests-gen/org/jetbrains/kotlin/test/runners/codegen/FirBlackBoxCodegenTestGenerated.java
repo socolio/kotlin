@@ -454,6 +454,12 @@ public class FirBlackBoxCodegenTestGenerated extends AbstractFirBlackBoxCodegenT
             }
 
             @Test
+            @TestMetadata("methodTypeParameters.kt")
+            public void testMethodTypeParameters() throws Exception {
+                runTest("compiler/testData/codegen/box/annotations/typeAnnotations/methodTypeParameters.kt");
+            }
+
+            @Test
             @TestMetadata("typeAnnotationTarget6.kt")
             public void testTypeAnnotationTarget6() throws Exception {
                 runTest("compiler/testData/codegen/box/annotations/typeAnnotations/typeAnnotationTarget6.kt");
