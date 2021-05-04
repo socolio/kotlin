@@ -1027,7 +1027,8 @@ task freeze5(type: KonanLocalTest) {
 }
 
 task freeze6(type: KonanLocalTest) {
-    enabled = (project.testTarget != 'wasm32') // No exceptions on WASM.
+    enabled = (project.testTarget != 'wasm32') && // No exceptions on WASM.
+        !isExperimentalMM // Experimental MM does not have a GC yet.
     goldValue = "OK\nOK\n"
     source = "runtime/workers/freeze6.kt"
 }
@@ -1059,11 +1060,13 @@ task lazy1(type: KonanLocalTest) {
 }
 
 standaloneTest("lazy2") {
+    enabled = !isExperimentalMM  // Experimental MM does not have a GC yet.
     goldValue = "123\nOK\n"
     source = "runtime/workers/lazy2.kt"
 }
 
 standaloneTest("lazy3") {
+    enabled = !isExperimentalMM  // Experimental MM does not have a GC yet.
     source = "runtime/workers/lazy3.kt"
 }
 
@@ -2872,11 +2875,13 @@ task memory_escape1(type: KonanLocalTest) {
 }
 
 task memory_cycles0(type: KonanLocalTest) {
+    enabled = !isExperimentalMM  // Experimental MM does not have a GC yet.
     goldValue = "42\n"
     source = "runtime/memory/cycles0.kt"
 }
 
 task memory_cycles1(type: KonanLocalTest) {
+    enabled = !isExperimentalMM  // Experimental MM does not have a GC yet.
     source = "runtime/memory/cycles1.kt"
 }
 
@@ -2890,6 +2895,7 @@ task memory_escape2(type: KonanLocalTest) {
 }
 
 task memory_weak0(type: KonanLocalTest) {
+    enabled = !isExperimentalMM  // Experimental MM does not have a GC yet.
     goldValue = "Data(s=Hello)\nnull\nOK\n"
     source = "runtime/memory/weak0.kt"
 }
@@ -2900,6 +2906,7 @@ task memory_weak1(type: KonanLocalTest) {
 }
 
 standaloneTest("memory_only_gc") {
+    enabled = !isExperimentalMM  // Experimental MM does not have a GC yet.
     source = "runtime/memory/only_gc.kt"
 }
 
@@ -4230,6 +4237,7 @@ standaloneTest("interop_opengl_teapot") {
 
 if (PlatformInfo.isAppleTarget(project)) {
     interopTest("interop_objc_smoke") {
+        enabled = !isExperimentalMM  // Experimental MM does not have a GC yet.
         goldValue = "84\nFoo\nDeallocated\n" +
                 "Hello, World!\nKotlin says: Hello, everybody!\nHello from Kotlin\n2, 1\n" +
                 "true\ntrue\n" +
@@ -4264,7 +4272,7 @@ if (PlatformInfo.isAppleTarget(project)) {
     }
 
     interopTestMultifile("interop_objc_tests") {
-        enabled = !isExperimentalMM  // Experimental MM does not support Obj-C weaks yet.
+        enabled = !isExperimentalMM  // Experimental MM does not have a GC yet.
         source = "interop/objc/tests/"
         interop = 'objcTests'
         flags = ['-tr', '-e', 'main']
@@ -4526,7 +4534,7 @@ dynamicTest("interop_kt42397") {
 
 dynamicTest("interop_cleaners_main_thread") {
     disabled = (project.target.name != project.hostName) ||
-        isExperimentalMM  // Experimental MM doesn't support multiple mutators yet.
+        isExperimentalMM  // Experimental MM does not have a GC yet.
     source = "interop/cleaners/cleaners.kt"
     cSource = "$projectDir/interop/cleaners/main_thread.cpp"
     clangTool = "clang++"
@@ -4860,6 +4868,7 @@ if (isAppleTarget(project)) {
     }
 
     frameworkTest("testStdlibFramework") {
+        enabled = !isExperimentalMM // Experimental MM does not have GC yet.
         framework('Stdlib') {
             sources = ['framework/stdlib']
             bitcode = true
