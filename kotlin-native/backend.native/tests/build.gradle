@@ -815,62 +815,72 @@ task empty_substring(type: KonanLocalTest) {
 }
 
 standaloneTest("cleaner_basic") {
-    enabled = (project.testTarget != 'wasm32') // Cleaners need workers
+    enabled = (project.testTarget != 'wasm32') && // Cleaners need workers
+        !isExperimentalMM // Experimental MM does not have a GC yet.
     source = "runtime/basic/cleaner_basic.kt"
     flags = ['-tr', '-Xopt-in=kotlin.native.internal.InternalForKotlinNative']
 }
 
 standaloneTest("cleaner_workers") {
-    enabled = (project.testTarget != 'wasm32') // Cleaners need workers
+    enabled = (project.testTarget != 'wasm32') && // Cleaners need workers
+        !isExperimentalMM // Experimental MM does not have a GC yet.
     source = "runtime/basic/cleaner_workers.kt"
     flags = ['-tr', '-Xopt-in=kotlin.native.internal.InternalForKotlinNative']
 }
 
 standaloneTest("cleaner_in_main_with_checker") {
-    enabled = (project.testTarget != 'wasm32') // Cleaners need workers
+    enabled = (project.testTarget != 'wasm32') && // Cleaners need workers
+        !isExperimentalMM // Experimental MM does not have a GC yet.
     source = "runtime/basic/cleaner_in_main_with_checker.kt"
     goldValue = "42\n"
 }
 
 standaloneTest("cleaner_in_main_without_checker") {
-    enabled = (project.testTarget != 'wasm32') // Cleaners need workers
+    enabled = (project.testTarget != 'wasm32') && // Cleaners need workers
+        !isExperimentalMM // Experimental MM does not have a GC yet.
     source = "runtime/basic/cleaner_in_main_without_checker.kt"
     goldValue = ""
 }
 
 standaloneTest("cleaner_leak_without_checker") {
-    enabled = (project.testTarget != 'wasm32') // Cleaners need workers
+    enabled = (project.testTarget != 'wasm32') && // Cleaners need workers
+        !isExperimentalMM // Experimental MM does not have a GC yet.
     source = "runtime/basic/cleaner_leak_without_checker.kt"
     goldValue = ""
 }
 
 standaloneTest("cleaner_leak_with_checker") {
-    enabled = (project.testTarget != 'wasm32') // Cleaners need workers
+    enabled = (project.testTarget != 'wasm32') && // Cleaners need workers
+        !isExperimentalMM // Experimental MM does not have a GC yet.
     source = "runtime/basic/cleaner_leak_with_checker.kt"
     expectedExitStatusChecker = { it != 0 }
     outputChecker = { s -> (s =~ /Cleaner (0x)?[0-9a-fA-F]+ was disposed during program exit/).find() }
 }
 
 standaloneTest("cleaner_in_tls_main_without_checker") {
-    enabled = (project.testTarget != 'wasm32') // Cleaners need workers
+    enabled = (project.testTarget != 'wasm32') && // Cleaners need workers
+        !isExperimentalMM // Experimental MM does not have a GC yet.
     source = "runtime/basic/cleaner_in_tls_main_without_checker.kt"
 }
 
 standaloneTest("cleaner_in_tls_main_with_checker") {
-    enabled = (project.testTarget != 'wasm32') // Cleaners need workers
+    enabled = (project.testTarget != 'wasm32') && // Cleaners need workers
+        !isExperimentalMM // Experimental MM does not have a GC yet.
     source = "runtime/basic/cleaner_in_tls_main_with_checker.kt"
     expectedExitStatusChecker = { it != 0 }
     outputChecker = { s -> (s =~ /Cleaner (0x)?[0-9a-fA-F]+ was disposed during program exit/).find() }
 }
 
 standaloneTest("cleaner_in_tls_worker") {
-    enabled = (project.testTarget != 'wasm32') // Cleaners need workers
+    enabled = (project.testTarget != 'wasm32') && // Cleaners need workers
+        !isExperimentalMM // Experimental MM does not have a GC yet.
     source = "runtime/basic/cleaner_in_tls_worker.kt"
     flags = ['-Xopt-in=kotlin.native.internal.InternalForKotlinNative']
 }
 
 standaloneTest("worker_bound_reference0") {
-    enabled = (project.testTarget != 'wasm32') // Workers need pthreads.
+    enabled = (project.testTarget != 'wasm32') && // Workers need pthreads.
+        !isExperimentalMM // Experimental MM does not have a GC yet.
     source = "runtime/concurrent/worker_bound_reference0.kt"
     flags = ['-tr']
 }
@@ -4503,7 +4513,8 @@ dynamicTest("interop_cleaners_main_thread") {
 }
 
 dynamicTest("interop_cleaners_second_thread") {
-    disabled = (project.target.name != project.hostName)
+    disabled = (project.target.name != project.hostName) ||
+        isExperimentalMM  // Experimental MM does not have a GC yet.
     source = "interop/cleaners/cleaners.kt"
     cSource = "$projectDir/interop/cleaners/second_thread.cpp"
     clangTool = "clang++"
@@ -4512,7 +4523,8 @@ dynamicTest("interop_cleaners_second_thread") {
 }
 
 dynamicTest("interop_cleaners_leak") {
-    disabled = (project.target.name != project.hostName)
+    disabled = (project.target.name != project.hostName) ||
+        isExperimentalMM  // Experimental MM does not have a GC yet.
     source = "interop/cleaners/cleaners.kt"
     cSource = "$projectDir/interop/cleaners/leak.cpp"
     clangTool = "clang++"
