@@ -130,6 +130,11 @@ public class IrAsmLikeInstructionListingTestGenerated extends AbstractIrAsmLikeI
             runTest("compiler/testData/codegen/asmLike/typeAnnotations/defaultArgs.kt");
         }
 
+        @TestMetadata("dontEmit.kt")
+        public void testDontEmit() throws Exception {
+            runTest("compiler/testData/codegen/asmLike/typeAnnotations/dontEmit.kt");
+        }
+
         @TestMetadata("enumClassConstructor.kt")
         public void testEnumClassConstructor() throws Exception {
             runTest("compiler/testData/codegen/asmLike/typeAnnotations/enumClassConstructor.kt");
@@ -143,6 +148,11 @@ public class IrAsmLikeInstructionListingTestGenerated extends AbstractIrAsmLikeI
         @TestMetadata("extension.kt")
         public void testExtension() throws Exception {
             runTest("compiler/testData/codegen/asmLike/typeAnnotations/extension.kt");
+        }
+
+        @TestMetadata("functionTypeParameter.kt")
+        public void testFunctionTypeParameter() throws Exception {
+            runTest("compiler/testData/codegen/asmLike/typeAnnotations/functionTypeParameter.kt");
         }
 
         @TestMetadata("implicit.kt")
@@ -178,6 +188,11 @@ public class IrAsmLikeInstructionListingTestGenerated extends AbstractIrAsmLikeI
         @TestMetadata("property.kt")
         public void testProperty() throws Exception {
             runTest("compiler/testData/codegen/asmLike/typeAnnotations/property.kt");
+        }
+
+        @TestMetadata("propertyTypeParameter.kt")
+        public void testPropertyTypeParameter() throws Exception {
+            runTest("compiler/testData/codegen/asmLike/typeAnnotations/propertyTypeParameter.kt");
         }
 
         @TestMetadata("simple.kt")
