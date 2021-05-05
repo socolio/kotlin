@@ -947,7 +947,8 @@ task worker9(type: KonanLocalTest) {
 }
 
 task worker10(type: KonanLocalTest) {
-    enabled = (project.testTarget != 'wasm32') // Workers need pthreads.
+    enabled = (project.testTarget != 'wasm32') && // Workers need pthreads.
+        !isExperimentalMM // Experimental MM does not have a GC yet.
     goldValue = "OK\ntrue\ntrue\n"
     source = "runtime/workers/worker10.kt"
 }
