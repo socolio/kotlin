@@ -1073,8 +1073,11 @@ standaloneTest("leakWorker") {
 standaloneTest("leakMemoryWithWorkerTermination") {
     disabled = (project.testTarget == 'wasm32') // Needs pthreads.
     source = "runtime/workers/leak_memory_with_worker_termination.kt"
-    expectedExitStatusChecker = { it != 0 }
-    outputChecker = { s -> s.contains("Memory leaks detected, 1 objects leaked!") }
+
+    if (!isExperimentalMM) { // Experimental MM will not report memory leaks.
+        expectedExitStatusChecker = { it != 0 }
+        outputChecker = { s -> s.contains("Memory leaks detected, 1 objects leaked!") }
+    }
 }
 
 task superFunCall(type: KonanLocalTest) {
@@ -4430,9 +4433,15 @@ standaloneTest("interop_objc_illegal_sharing") {
     disabled = !isAppleTarget(project)
     source = "interop/objc/illegal_sharing.kt"
     UtilsKt.dependsOnPlatformLibs(it)
-    expectedExitStatusChecker = { it != 0 }
-    outputChecker = {
-      it.startsWith("Before") && !it.contains("After")
+    if (isExperimentalMM) {
+        outputChecker = {
+            it.startsWith("Before") && it.contains("After")
+        }
+    } else {
+        expectedExitStatusChecker = { it != 0 }
+        outputChecker = {
+            it.startsWith("Before") && !it.contains("After")
+        }
     }
 }
 
