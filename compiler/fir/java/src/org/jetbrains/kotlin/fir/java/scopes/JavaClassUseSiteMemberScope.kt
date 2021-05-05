@@ -46,6 +46,8 @@ class JavaClassUseSiteMemberScope(
     private val typeParameterStack = klass.javaTypeParameterStack
     private val specialFunctions = hashMapOf<Name, Collection<FirNamedFunctionSymbol>>()
     private val accessorByNameMap = hashMapOf<Name, FirAccessorSymbol>()
+    
+    private val canUseSpecialGetters = !klass.hasKotlinSuper(session)
 
     override fun getCallableNames(): Set<Name> {
         return declaredMemberScope.getContainingCallableNamesIfPresent() + superTypesScope.getCallableNames()
@@ -137,14 +139,10 @@ class JavaClassUseSiteMemberScope(
     private fun FirPropertySymbol.findGetterOverride(
         scope: FirScope,
     ): FirNamedFunctionSymbol? {
-        val specialGetterName = getBuiltinSpecialPropertyGetterName()
+        val specialGetterName =
+            if (this@JavaClassUseSiteMemberScope.canUseSpecialGetters) getBuiltinSpecialPropertyGetterName() else null
         if (specialGetterName != null) {
-            val getter = findGetterByName(specialGetterName.asString(), scope)
-            //modality check is a hack to skip search be default getter name for enums
-            //for collections in FE 1.0 you can actually override special properties by not-so-special getter name (eg size() -> getSize)
-            if (getter != null || fir.modality == Modality.FINAL) {
-                return getter
-            }
+            return findGetterByName(specialGetterName.asString(), scope)
         }
 
         return findGetterByName(JvmAbi.getterName(fir.name.asString()), scope)
@@ -452,6 +450,27 @@ class JavaClassUseSiteMemberScope(
         }
 
         return result
+    }
+
+    /**
+     * Checks if class has any kotlin super-types apart from builtins and interfaces
+     */
+    private fun FirRegularClass.hasKotlinSuper(session: FirSession): Boolean =
+        when {
+            this is FirJavaClass -> superConeTypes.any { type ->
+                type.toFir(session)?.hasKotlinSuper(session) == true
+            }
+            isInterface || origin == FirDeclarationOrigin.BuiltIns -> false
+            else -> true
+        }
+
+    private fun ConeClassLikeType.toFir(session: FirSession): FirRegularClass? {
+        val symbol = this.toSymbol(session)
+        return if (symbol is FirRegularClassSymbol) {
+            symbol.fir
+        } else {
+            null
+        }
     }
 }
 
