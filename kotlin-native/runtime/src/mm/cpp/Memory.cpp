@@ -352,12 +352,15 @@ extern "C" RUNTIME_NOTHROW void* CreateStablePointer(ObjHeader* object) {
 }
 
 extern "C" RUNTIME_NOTHROW void DisposeStablePointer(void* pointer) {
+    DisposeStablePointerFor(kotlin::mm::GetMemoryState(), pointer);
+}
+
+extern "C" RUNTIME_NOTHROW void DisposeStablePointerFor(MemoryState* memoryState, void* pointer) {
     if (!pointer)
         return;
 
-    auto* threadData = mm::ThreadRegistry::Instance().CurrentThreadData();
     auto* node = static_cast<mm::StableRefRegistry::Node*>(pointer);
-    mm::StableRefRegistry::Instance().UnregisterStableRef(threadData, node);
+    mm::StableRefRegistry::Instance().UnregisterStableRef(memoryState->GetThreadData(), node);
 }
 
 extern "C" RUNTIME_NOTHROW OBJ_GETTER(DerefStablePointer, void* pointer) {

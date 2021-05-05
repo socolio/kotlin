@@ -150,7 +150,26 @@ class Worker {
 
   pthread_t thread() const { return thread_; }
 
+  MemoryState* memoryState() { return memoryState_; }
+
  private:
+  void setThread(pthread_t thread) {
+    // For workers started using the Worker API, we set thread_ in startEventLoop when calling pthread_create.
+    // But we also set thread_ in WorkerInit to handle the main thread and threads calling Kotlin from native code.
+    // In this case, thread id will be set twice for workers started by the Worker API.
+    // This assert takes this into account.
+    RuntimeAssert(thread_ == 0 || pthread_equal(thread_, thread),
+                  "Cannot overwrite thread id for worker with id=%d", id());
+    thread_ = thread;
+  }
+
+  void setMemoryState(MemoryState* state) {
+    RuntimeAssert(memoryState_ == nullptr, "MemoryState is already set for the worker with id=%d", id());
+    memoryState_ = state;
+  }
+
+  friend Worker* WorkerInit(MemoryState* memoryState, KBoolean errorReporting);
+
   KInt id_;
   WorkerKind kind_;
   KStdDeque<Job> queue_;
@@ -164,6 +183,9 @@ class Worker {
   bool errorReporting_;
   bool terminated_ = false;
   pthread_t thread_ = 0;
+  // MemoryState for worker's thread.
+  // We set it in WorkerInit and use to correctly switch thread states in woker's destructor.
+  MemoryState* memoryState_ = nullptr;
 };
 
 #endif  // WITH_WORKERS
@@ -234,7 +256,7 @@ class Future {
 
   void storeResultUnlocked(KNativePtr result, bool ok);
 
-  void cancelUnlocked();
+  void cancelUnlocked(MemoryState* memoryState);
 
   // Those are called with the lock taken.
   KInt state() const { return state_; }
@@ -561,7 +583,7 @@ void Future::storeResultUnlocked(KNativePtr result, bool ok) {
   theState()->signalAnyFuture();
 }
 
-void Future::cancelUnlocked() {
+void Future::cancelUnlocked(MemoryState* memoryState) {
   {
     Locker locker(&lock_);
     state_ = CANCELLED;
@@ -719,11 +741,17 @@ KInt GetWorkerId(Worker* worker) {
 #endif  // WITH_WORKERS
 }
 
-Worker* WorkerInit(KBoolean errorReporting) {
+Worker* WorkerInit(MemoryState* memoryState, KBoolean errorReporting) {
 #if WITH_WORKERS
-  if (::g_worker != nullptr) return ::g_worker;
-  Worker* worker = theState()->addWorkerUnlocked(errorReporting != 0, nullptr, WorkerKind::kOther);
-  ::g_worker = worker;
+  Worker* worker;
+  if (::g_worker != nullptr) {
+      worker = ::g_worker;
+  } else {
+      worker = theState()->addWorkerUnlocked(errorReporting != 0, nullptr, WorkerKind::kOther);
+      ::g_worker = worker;
+  }
+  worker->setThread(pthread_self());
+  worker->setMemoryState(memoryState);
   return worker;
 #else
   return nullptr;
@@ -766,36 +794,40 @@ bool WorkerSchedule(KInt id, KNativePtr jobStablePtr) {
 #if WITH_WORKERS
 
 Worker::~Worker() {
+  RuntimeAssert(pthread_equal(thread(), pthread_self()),
+                "Worker destruction must be executed by the worker thread.");
   // Cleanup jobs in the queue.
   for (auto job : queue_) {
-    switch (job.kind) {
-      case JOB_REGULAR:
-        DisposeStablePointer(job.regularJob.argument);
-        job.regularJob.future->cancelUnlocked();
-        break;
-      case JOB_EXECUTE_AFTER: {
-        // TODO: what do we do here? Shall we execute them?
-        DisposeStablePointer(job.executeAfter.operation);
-        break;
+      switch (job.kind) {
+          case JOB_REGULAR:
+              DisposeStablePointerFor(memoryState_, job.regularJob.argument);
+              job.regularJob.future->cancelUnlocked(memoryState_);
+              break;
+          case JOB_EXECUTE_AFTER: {
+              // TODO: what do we do here? Shall we execute them?
+              DisposeStablePointerFor(memoryState_, job.executeAfter.operation);
+              break;
+          }
+          case JOB_TERMINATE: {
+              // TODO: any more processing here?
+              job.terminationRequest.future->cancelUnlocked(memoryState_);
+              break;
+          }
+          case JOB_NONE: {
+              RuntimeCheck(false, "Cannot be in queue");
+              break;
+          }
       }
-      case JOB_TERMINATE: {
-        // TODO: any more processing here?
-        job.terminationRequest.future->cancelUnlocked();
-        break;
-      }
-      case JOB_NONE: {
-        RuntimeCheck(false, "Cannot be in queue");
-        break;
-      }
-    }
   }
 
   for (auto job : delayed_) {
-    RuntimeAssert(job.kind == JOB_EXECUTE_AFTER, "Must be delayed");
-    DisposeStablePointer(job.executeAfter.operation);
+      RuntimeAssert(job.kind == JOB_EXECUTE_AFTER, "Must be delayed");
+      DisposeStablePointerFor(memoryState_, job.executeAfter.operation);
   }
 
-  if (name_ != nullptr) DisposeStablePointer(name_);
+  if (name_ != nullptr) {
+      DisposeStablePointerFor(memoryState_, name_);
+  }
 
   pthread_mutex_destroy(&lock_);
   pthread_cond_destroy(&cond_);

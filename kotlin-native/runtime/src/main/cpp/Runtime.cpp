@@ -105,7 +105,7 @@ RuntimeState* initRuntime() {
       case DESTROY_RUNTIME_LEGACY:
           compareAndSwap(&globalRuntimeStatus, kGlobalRuntimeUninitialized, kGlobalRuntimeRunning);
           result->memoryState = InitMemory(false); // The argument will be ignored for legacy DestroyRuntimeMode
-          result->worker = WorkerInit(true);
+          result->worker = WorkerInit(result->memoryState, true);
           firstRuntime = atomicAdd(&aliveRuntimesCount, 1) == 1;
           if (!kotlin::kSupportsMultipleMutators && !firstRuntime) {
               konan::consoleErrorf("This GC implementation does not support multiple mutator threads.");
@@ -126,7 +126,7 @@ RuntimeState* initRuntime() {
               konan::abort();
           }
           result->memoryState = InitMemory(firstRuntime);
-          result->worker = WorkerInit(true);
+          result->worker = WorkerInit(result->memoryState, true);
   }
 
   InitOrDeinitGlobalVariables(ALLOC_THREAD_LOCAL_GLOBALS, result->memoryState);
