@@ -9,6 +9,7 @@ package org.jetbrains.kotlin.backend.konan.llvm
 import kotlinx.cinterop.*
 import llvm.*
 import org.jetbrains.kotlin.backend.konan.*
+import org.jetbrains.kotlin.backend.konan.cgen.CBridgeOrigin
 import org.jetbrains.kotlin.backend.konan.descriptors.ClassGlobalHierarchyInfo
 import org.jetbrains.kotlin.backend.konan.llvm.objc.*
 import org.jetbrains.kotlin.konan.target.CompilerOutputKind
@@ -1248,6 +1249,12 @@ internal class FunctionGenerationContext(val function: LLVMValueRef,
         if (isObjectType(returnType!!)) {
             returnSlot = LLVMGetParam(function, numParameters(function.type) - 1)
         }
+
+        if (context.memoryModel == MemoryModel.EXPERIMENTAL &&
+                irFunction?.origin == CBridgeOrigin.C_TO_KOTLIN_BRIDGE) {
+            needsRuntimeInit = true
+        }
+
         positionAtEnd(localsInitBb)
         slotsPhi = phi(kObjHeaderPtrPtr)
         // Is removed by DCE trivially, if not needed.
