@@ -455,10 +455,11 @@ class JavaClassUseSiteMemberScope(
     /**
      * Checks if class has any kotlin super-types apart from builtins and interfaces
      */
-    private fun FirRegularClass.hasKotlinSuper(session: FirSession): Boolean =
+    private fun FirRegularClass.hasKotlinSuper(session: FirSession, visited: MutableSet<FirRegularClass> = mutableSetOf()): Boolean =
         when {
+            !visited.add(this) -> false
             this is FirJavaClass -> superConeTypes.any { type ->
-                type.toFir(session)?.hasKotlinSuper(session) == true
+                type.toFir(session)?.hasKotlinSuper(session, visited) == true
             }
             isInterface || origin == FirDeclarationOrigin.BuiltIns -> false
             else -> true
