@@ -4377,6 +4377,7 @@ if (PlatformInfo.isAppleTarget(project)) {
     }
 
     interopTest("interop_objc_kt42172") {
+        enabled = !isExperimentalMM  // Experimental MM doesn't have a GC yet.
         source = "interop/objc/kt42172/main.kt"
         interop = "objc_kt42172"
         flags = ['-Xopt-in=kotlin.native.internal.InternalForKotlinNative']
