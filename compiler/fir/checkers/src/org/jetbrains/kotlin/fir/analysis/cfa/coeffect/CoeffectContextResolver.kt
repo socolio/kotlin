@@ -52,14 +52,14 @@ class CoeffectContextOnNodes(
 
     fun applyProvider(provider: CoeffectContextProvider?): CoeffectContextOnNodes {
         if (provider == null) return this
-        val newContext = provider.provideContext(this[provider.family])
-        return put(provider.family, newContext)
+        val newFamilyContext = provider.provideContext(this[provider.family])
+        return put(provider.family, newFamilyContext)
     }
 
     fun applyCleaner(cleaner: CoeffectContextCleaner?): CoeffectContextOnNodes {
         if (cleaner == null) return this
-        val newContext = cleaner.cleanupContext(this[cleaner.family])
-        return put(cleaner.family, newContext)
+        val newFamilyContext = cleaner.cleanupContext(this[cleaner.family])
+        return put(cleaner.family, newFamilyContext)
     }
 
     operator fun plus(provider: CoeffectContextProvider?): CoeffectContextOnNodes = applyProvider(provider)

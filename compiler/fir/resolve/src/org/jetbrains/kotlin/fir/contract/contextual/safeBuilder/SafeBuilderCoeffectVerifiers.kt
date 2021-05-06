@@ -14,19 +14,19 @@ import org.jetbrains.kotlin.fir.symbols.impl.FirCallableSymbol
 
 class SafeBuilderInitializationRequiredError(
     val target: FirCallableSymbol<*>, val property: FirCallableSymbol<*>, val range: EventOccurrencesRange
-) : CoeffectContextVerificationError
+) : CoeffectContextVerificationError(SafeBuilderCoeffectFamily)
 
 class SafeBuilderInvocationRequiredError(
     val target: FirCallableSymbol<*>, val function: FirCallableSymbol<*>, val range: EventOccurrencesRange
-) : CoeffectContextVerificationError
+) : CoeffectContextVerificationError(SafeBuilderCoeffectFamily)
 
 class SafeBuilderUnprovidedInitializationError(
     val target: FirCallableSymbol<*>, val property: FirCallableSymbol<*>
-) : CoeffectContextVerificationError
+) : CoeffectContextVerificationError(SafeBuilderCoeffectFamily)
 
 class SafeBuilderUnprovidedInvocationError(
     val target: FirCallableSymbol<*>, val function: FirCallableSymbol<*>
-) : CoeffectContextVerificationError
+) : CoeffectContextVerificationError(SafeBuilderCoeffectFamily)
 
 object SafeBuilderActionProvidingVerifier : CoeffectContextVerifier {
     override val family = SafeBuilderCoeffectFamily
@@ -50,7 +50,7 @@ object SafeBuilderActionProvidingVerifier : CoeffectContextVerifier {
 }
 
 class SafeBuilderCoeffectContextVerifier(val action: SafeBuilderAction, val requiredKind: EventOccurrencesRange) : CoeffectContextVerifier {
-    override val family = SafeBuilderCoeffectFamily
+    override val family get() = SafeBuilderCoeffectFamily
 
     override fun verifyContext(context: CoeffectContext, session: FirSession): List<CoeffectContextVerificationError> {
         if (context !is SafeBuilderCoeffectContext) throw AssertionError()

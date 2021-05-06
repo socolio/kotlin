@@ -5,4 +5,6 @@
 
 package org.jetbrains.kotlin.fir.contracts.contextual.diagnostics
 
-interface CoeffectContextVerificationError
+import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectFamily
+
+abstract class CoeffectContextVerificationError(val family: CoeffectFamily)

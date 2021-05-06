@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2020 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2021 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
@@ -12,6 +12,7 @@ import org.jetbrains.kotlin.fir.analysis.cfa.collectDataForNode
 import org.jetbrains.kotlin.fir.analysis.cfa.previousCfgNodes
 import org.jetbrains.kotlin.fir.analysis.cfa.traverse
 import org.jetbrains.kotlin.fir.analysis.checkers.cfa.FirControlFlowChecker
+import org.jetbrains.kotlin.fir.analysis.diagnostics.DiagnosticReporter
 import org.jetbrains.kotlin.fir.contracts.contextual.diagnostics.CoeffectContextVerificationError
 import org.jetbrains.kotlin.fir.declarations.FirAnonymousFunction
 import org.jetbrains.kotlin.fir.declarations.FirFunction
@@ -25,29 +26,20 @@ import org.jetbrains.kotlin.fir.resolve.dfa.contracts.createArgumentsMapping
 import org.jetbrains.kotlin.fir.symbols.AbstractFirBasedSymbol
 import org.jetbrains.kotlin.fir.visitors.FirVisitorVoid
 
-abstract class CoeffectAnalyzer : FirControlFlowChecker() {
+class FirCoeffectAnalyzer(vararg val familyAnalyzers: CoeffectFamilyAnalyzer) : FirControlFlowChecker() {
 
-    protected fun FirFunction<*>.collectLambdaOwnerFunctions(): Map<FirAnonymousFunction, Pair<FirFunction<*>, AbstractFirBasedSymbol<*>>> {
-        val lambdaToOwnerFunction = mutableMapOf<FirAnonymousFunction, Pair<FirFunction<*>, AbstractFirBasedSymbol<*>>>()
-        body?.accept(LambdaToOwnerFunctionCollector(lambdaToOwnerFunction))
-        return lambdaToOwnerFunction
-    }
+    override fun analyze(graph: ControlFlowGraph, reporter: DiagnosticReporter) {
+        val function = graph.declaration as? FirFunction<*> ?: return
 
-    protected fun ControlFlowGraph.collectActionsOnNodes(collector: CoeffectActionsCollector): CoeffectActionsOnNodes {
-        val data = CoeffectActionsOnNodes()
-        traverse(TraverseDirection.Forward, collector, data)
-        return data
-    }
+        val lambdaToOwnerFunction = function.collectLambdaOwnerFunctions()
+        familyAnalyzers.forEach { it.analyze(function, graph, reporter) }
+        val familyAnalyzers = familyAnalyzers.associateBy { it.family }
 
-    protected fun ControlFlowGraph.collectContextOnNodes(actionsOnNodes: CoeffectActionsOnNodes): Map<CFGNode<*>, CoeffectContextOnNodes> =
-        collectDataForNode(TraverseDirection.Forward, CoeffectContextOnNodes.EMPTY, CoeffectContextResolver(actionsOnNodes))
+        val actionsOnNodes = graph.collectActionsOnNodes(CoeffectActionsCollector(familyAnalyzers, lambdaToOwnerFunction))
+        if (!actionsOnNodes.hasVerifiers()) return
 
-    protected inline fun verifyCoeffectContext(
-        actionsOnNodes: CoeffectActionsOnNodes,
-        contextOnNodes: Map<CFGNode<*>, CoeffectContextOnNodes>,
-        session: FirSession,
-        reporter: (node: CFGNode<*>, error: CoeffectContextVerificationError) -> Unit
-    ) {
+        val contextOnNodes = graph.buildContextOnNodes(actionsOnNodes)
+
         for ((node, actionsList) in actionsOnNodes) {
             val prevNode = node.previousCfgNodes.firstOrNull() ?: node
             val data = contextOnNodes[node] ?: continue
@@ -56,11 +48,33 @@ abstract class CoeffectAnalyzer : FirControlFlowChecker() {
             for (actions in actionsList) {
                 for (verifier in actions.verifiers) {
                     val context = (if (verifier.needVerifyOnCurrentNode) data else prevData)[verifier.family]
-                    val errors = verifier.verifyContext(context, session)
-                    errors.forEach { reporter(node, it) }
+                    val errors = verifier.verifyContext(context, function.session)
+
+                    for (error in errors) {
+                        node.fir.source?.let {
+                            val familyAnalyzer = familyAnalyzers[error.family]
+                            val firError = familyAnalyzer?.getFirError(error, it)
+                            reporter.report(firError)
+                        }
+                    }
                 }
             }
         }
+    }
+
+    private fun ControlFlowGraph.collectActionsOnNodes(collector: CoeffectActionsCollector): CoeffectActionsOnNodes {
+        val data = CoeffectActionsOnNodes()
+        traverse(TraverseDirection.Forward, collector, data)
+        return data
+    }
+
+    private fun ControlFlowGraph.buildContextOnNodes(actionsOnNodes: CoeffectActionsOnNodes): Map<CFGNode<*>, CoeffectContextOnNodes> =
+        collectDataForNode(TraverseDirection.Forward, CoeffectContextOnNodes.EMPTY, CoeffectContextResolver(actionsOnNodes))
+
+    private fun FirFunction<*>.collectLambdaOwnerFunctions(): Map<FirAnonymousFunction, Pair<FirFunction<*>, AbstractFirBasedSymbol<*>>> {
+        val lambdaToOwnerFunction = mutableMapOf<FirAnonymousFunction, Pair<FirFunction<*>, AbstractFirBasedSymbol<*>>>()
+        body?.accept(LambdaToOwnerFunctionCollector(lambdaToOwnerFunction))
+        return lambdaToOwnerFunction
     }
 
     private class LambdaToOwnerFunctionCollector(
@@ -88,4 +102,3 @@ abstract class CoeffectAnalyzer : FirControlFlowChecker() {
         }
     }
 }
-

@@ -13,10 +13,10 @@ import org.jetbrains.kotlin.fir.typeContext
 import org.jetbrains.kotlin.fir.types.ConeKotlinType
 import org.jetbrains.kotlin.types.AbstractTypeChecker
 
-class CheckedExceptionContextError(val exceptionType: ConeKotlinType) : CoeffectContextVerificationError
+class CheckedExceptionContextError(val exceptionType: ConeKotlinType) : CoeffectContextVerificationError(CheckedExceptionCoeffectFamily)
 
 class CheckedExceptionCoeffectContextVerifier(val exceptionType: ConeKotlinType) : CoeffectContextVerifier {
-    override val family = CheckedExceptionCoeffectFamily
+    override val family get() = CheckedExceptionCoeffectFamily
 
     override fun verifyContext(context: CoeffectContext, session: FirSession): List<CoeffectContextVerificationError> {
         if (context !is CheckedExceptionCoeffectContext) throw AssertionError()

@@ -1,33 +1,33 @@
 /*
- * Copyright 2010-2020 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2021 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
-package org.jetbrains.kotlin.fir.analysis.cfa
+package org.jetbrains.kotlin.fir.analysis.cfa.coeffect.safebuilder
 
 import org.jetbrains.kotlin.contracts.description.EventOccurrencesRange
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.FirSourceElement
-import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.CoeffectActionsCollector
 import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.CoeffectActionsOnNodes
-import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.CoeffectAnalyzer
+import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.CoeffectFamilyActionsCollector
+import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.CoeffectFamilyAnalyzer
 import org.jetbrains.kotlin.fir.analysis.diagnostics.DiagnosticReporter
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirDiagnostic
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors
+import org.jetbrains.kotlin.fir.contract.contextual.safeBuilder.*
 import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectFamily
 import org.jetbrains.kotlin.fir.contracts.contextual.coeffectActions
+import org.jetbrains.kotlin.fir.contracts.contextual.declaration.ConeAbstractCoeffectEffectDeclaration
 import org.jetbrains.kotlin.fir.contracts.contextual.diagnostics.CoeffectContextVerificationError
-import org.jetbrains.kotlin.fir.contract.contextual.safeBuilder.*
 import org.jetbrains.kotlin.fir.contracts.description.ConeActionDeclaration
 import org.jetbrains.kotlin.fir.contracts.description.ConeFunctionInvocationAction
 import org.jetbrains.kotlin.fir.contracts.description.ConePropertyInitializationAction
 import org.jetbrains.kotlin.fir.contracts.description.ConeSafeBuilderEffectDeclaration
 import org.jetbrains.kotlin.fir.contracts.effects
 import org.jetbrains.kotlin.fir.declarations.*
-import org.jetbrains.kotlin.fir.resolve.dfa.cfg.*
-import org.jetbrains.kotlin.fir.contracts.contextual.declaration.ConeAbstractCoeffectEffectDeclaration
 import org.jetbrains.kotlin.fir.expressions.*
 import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
+import org.jetbrains.kotlin.fir.resolve.dfa.cfg.*
 import org.jetbrains.kotlin.fir.resolve.transformers.firClassLike
 import org.jetbrains.kotlin.fir.symbols.AbstractFirBasedSymbol
 import org.jetbrains.kotlin.fir.symbols.CallableId
@@ -38,14 +38,16 @@ import org.jetbrains.kotlin.fir.types.FirTypeRef
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 
-object FirSafeBuilderAnalyzer : CoeffectAnalyzer() {
+object FirSafeBuilderAnalyzer : CoeffectFamilyAnalyzer() {
+
+    override val family: CoeffectFamily get() = SafeBuilderCoeffectFamily
+    override val actionsCollector: CoeffectFamilyActionsCollector get() = SafeBuilderActionsCollector
 
     private val safeBuilderAnnotation = CallableId(FqName(""), FqName("SafeBuilder"), Name.identifier("SafeBuilder"))
     private val notConstructionAnnotation = CallableId(FqName(""), FqName("NotConstruction"), Name.identifier("NotConstruction"))
     private val buildAnnotation = CallableId(FqName(""), FqName("Build"), Name.identifier("Build"))
 
-    override fun analyze(graph: ControlFlowGraph, reporter: DiagnosticReporter) {
-        val function = graph.declaration as? FirFunction<*> ?: return
+    override fun analyze(function: FirFunction<*>, graph: ControlFlowGraph, reporter: DiagnosticReporter) {
         val contractDescription = (function as? FirContractDescriptionOwner)?.contractDescription
         val effects = contractDescription?.effects ?: emptyList()
 
@@ -60,28 +62,11 @@ object FirSafeBuilderAnalyzer : CoeffectAnalyzer() {
                 }
             }
         }
-
-        val lambdaToOwnerFunction = function.collectLambdaOwnerFunctions()
-        val actionsOnNodes = graph.collectActionsOnNodes(SafeBuilderCollector(lambdaToOwnerFunction))
-        val contextOnNodes = graph.collectContextOnNodes(actionsOnNodes)
-
-        verifyCoeffectContext(actionsOnNodes, contextOnNodes, function.session) { node, error ->
-            node.fir.source?.let {
-                val firError = error.toFirError(it)
-                reporter.report(firError)
-            }
-        }
     }
 
-    class SafeBuilderCollector(
-        lambdaToOwnerFunction: Map<FirAnonymousFunction, Pair<FirFunction<*>, AbstractFirBasedSymbol<*>>>
-    ) : CoeffectActionsCollector(lambdaToOwnerFunction) {
-
-        override fun collectFamilyActions(family: CoeffectFamily): Boolean = family === SafeBuilderCoeffectFamily
+    private object SafeBuilderActionsCollector : CoeffectFamilyActionsCollector() {
 
         override fun visitFunctionCallNode(node: FunctionCallNode, data: CoeffectActionsOnNodes) {
-            super.visitFunctionCallNode(node, data)
-
             val functionSymbol = node.fir.toResolvedCallableSymbol() ?: return
             val receiverSymbol = node.fir.dispatchReceiver.toSymbol() as? FirCallableSymbol<*> ?: return
             val safeBuilderClass = node.fir.dispatchReceiver.typeRef.toSafeBuilderClass(functionSymbol.fir.session) ?: return
@@ -133,7 +118,6 @@ object FirSafeBuilderAnalyzer : CoeffectAnalyzer() {
         }
 
         override fun visitFunctionExitNode(node: FunctionExitNode, data: CoeffectActionsOnNodes) {
-            super.visitFunctionExitNode(node, data)
             data[node] = coeffectActions {
                 verifiers += SafeBuilderActionProvidingVerifier
             }
@@ -194,11 +178,13 @@ object FirSafeBuilderAnalyzer : CoeffectAnalyzer() {
             id == notConstructionAnnotation || id == buildAnnotation
         }
 
-    private fun CoeffectContextVerificationError.toFirError(source: FirSourceElement): FirDiagnostic<*>? = when (this) {
-        is SafeBuilderInitializationRequiredError -> FirErrors.PROPERTY_INITIALIZATION_REQUIRED.on(source, target, property, range)
-        is SafeBuilderInvocationRequiredError -> FirErrors.FUNCTION_INVOCATION_REQUIRED.on(source, target, function, range)
-        is SafeBuilderUnprovidedInitializationError -> FirErrors.UNPROVIDED_SAFE_BUILDER_INITIALIZATION.on(source, target, property)
-        is SafeBuilderUnprovidedInvocationError -> FirErrors.UNPROVIDED_SAFE_BUILDER_INVOCATION.on(source, target, function)
-        else -> null
+    override fun getFirError(error: CoeffectContextVerificationError, source: FirSourceElement): FirDiagnostic<*>? = with(error) {
+        when (this) {
+            is SafeBuilderInitializationRequiredError -> FirErrors.PROPERTY_INITIALIZATION_REQUIRED.on(source, target, property, range)
+            is SafeBuilderInvocationRequiredError -> FirErrors.FUNCTION_INVOCATION_REQUIRED.on(source, target, function, range)
+            is SafeBuilderUnprovidedInitializationError -> FirErrors.UNPROVIDED_SAFE_BUILDER_INITIALIZATION.on(source, target, property)
+            is SafeBuilderUnprovidedInvocationError -> FirErrors.UNPROVIDED_SAFE_BUILDER_INVOCATION.on(source, target, function)
+            else -> null
+        }
     }
 }
