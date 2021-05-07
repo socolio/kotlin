@@ -6,11 +6,9 @@
 package org.jetbrains.kotlin.fir.analysis.cfa.coeffect.checkedexception
 
 import org.jetbrains.kotlin.fir.FirSourceElement
-import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.CoeffectActionsCollector
 import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.CoeffectActionsOnNodes
 import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.CoeffectFamilyActionsCollector
 import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.CoeffectFamilyAnalyzer
-import org.jetbrains.kotlin.fir.analysis.diagnostics.DiagnosticReporter
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirDiagnostic
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors
 import org.jetbrains.kotlin.fir.contract.contextual.checkedexception.CatchesExceptionCoeffectContextProvider
@@ -20,12 +18,8 @@ import org.jetbrains.kotlin.fir.contract.contextual.checkedexception.CheckedExce
 import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectFamily
 import org.jetbrains.kotlin.fir.contracts.contextual.coeffectActions
 import org.jetbrains.kotlin.fir.contracts.contextual.diagnostics.CoeffectContextVerificationError
-import org.jetbrains.kotlin.fir.declarations.FirAnonymousFunction
-import org.jetbrains.kotlin.fir.declarations.FirFunction
-import org.jetbrains.kotlin.fir.resolve.dfa.cfg.ControlFlowGraph
 import org.jetbrains.kotlin.fir.resolve.dfa.cfg.TryMainBlockEnterNode
 import org.jetbrains.kotlin.fir.resolve.dfa.cfg.TryMainBlockExitNode
-import org.jetbrains.kotlin.fir.symbols.AbstractFirBasedSymbol
 import org.jetbrains.kotlin.fir.types.ConeKotlinType
 import org.jetbrains.kotlin.fir.types.coneTypeSafe
 
@@ -40,7 +34,7 @@ object FirCheckedExceptionAnalyzer : CoeffectFamilyAnalyzer() {
             for (catch in node.fir.catches) {
                 val exceptionType = catch.parameter.returnTypeRef.coneTypeSafe<ConeKotlinType>() ?: continue
                 data[node] = coeffectActions {
-                    providers += CatchesExceptionCoeffectContextProvider(exceptionType, catch)
+                    modifiers += CatchesExceptionCoeffectContextProvider(exceptionType, catch)
                 }
             }
         }
@@ -48,7 +42,7 @@ object FirCheckedExceptionAnalyzer : CoeffectFamilyAnalyzer() {
         override fun visitTryMainBlockExitNode(node: TryMainBlockExitNode, data: CoeffectActionsOnNodes) {
             for (catch in node.fir.catches) {
                 data[node] = coeffectActions {
-                    cleaners += CheckedExceptionCoeffectContextCleaner(catch)
+                    modifiers += CheckedExceptionCoeffectContextCleaner(catch)
                 }
             }
         }

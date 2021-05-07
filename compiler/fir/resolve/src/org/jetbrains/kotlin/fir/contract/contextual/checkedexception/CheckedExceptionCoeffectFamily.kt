@@ -39,7 +39,7 @@ fun throwsEffectCoeffectExtractors(exceptionType: ConeKotlinType) = coeffectActi
 
     onOwnerEnter {
         actions {
-            providers += CatchesExceptionCoeffectContextProvider(exceptionType, it)
+            modifiers += CatchesExceptionCoeffectContextProvider(exceptionType, it)
         }
     }
 }
@@ -55,7 +55,7 @@ fun calledInTryCatchEffectCoeffectExtractors(exceptionType: ConeKotlinType) = co
 
     onOwnerEnter {
         actions {
-            providers += CatchesExceptionCoeffectContextProvider(exceptionType, it)
+            modifiers += CatchesExceptionCoeffectContextProvider(exceptionType, it)
         }
     }
 }

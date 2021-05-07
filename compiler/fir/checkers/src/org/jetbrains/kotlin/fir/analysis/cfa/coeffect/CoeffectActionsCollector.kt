@@ -116,17 +116,26 @@ class CoeffectActionsCollector(
         }
 }
 
-class CoeffectActionsOnNodes(private val data: MutableMap<CFGNode<*>, MutableList<CoeffectContextActions>>) {
+class CoeffectActionsOnNodes(private val data: MutableMap<CFGNode<*>, MutableMap<CoeffectFamily, CoeffectContextActions>>) {
+
+    var hasVerifiers: Boolean = false
+        private set
 
     constructor() : this(mutableMapOf())
 
-    operator fun get(node: CFGNode<*>): MutableList<CoeffectContextActions>? = data[node]
+    operator fun get(node: CFGNode<*>): MutableMap<CoeffectFamily, CoeffectContextActions>? = data[node]
 
     operator fun set(node: CFGNode<*>, actions: CoeffectContextActions) {
-        if (!actions.isEmpty) data.getOrPut(node, ::mutableListOf) += actions
+        val family = actions.family ?: return
+        val nodeActions = data.getOrPut(node, ::mutableMapOf)
+
+        when (val familyActions = nodeActions[family]) {
+            null -> nodeActions[family] = actions
+            else -> familyActions.add(actions)
+        }
+
+        hasVerifiers = hasVerifiers || actions.verifiers.isNotEmpty()
     }
 
     operator fun iterator() = data.iterator()
-
-    fun hasVerifiers() = data.any { entry -> entry.value.any { it.verifiers.isNotEmpty() } }
 }

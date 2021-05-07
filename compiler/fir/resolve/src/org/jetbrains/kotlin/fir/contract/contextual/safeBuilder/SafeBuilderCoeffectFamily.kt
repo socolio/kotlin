@@ -81,7 +81,7 @@ fun mustDoEffectCoeffectExtractors(action: ConeActionDeclaration) = coeffectActi
         val targetSymbol = mapping[target.parameter.parameterIndex + 1]?.toResolvedCallableSymbol() ?: return@onOwnerCall noActions()
         val safeBuilderAction = action.toSafeBuilderAction(targetSymbol) ?: return@onOwnerCall noActions()
         actions {
-            providers += SafeBuilderCoeffectContextProvider(safeBuilderAction, action.kind)
+            modifiers += SafeBuilderCoeffectContextProvider(safeBuilderAction, action.kind)
         }
     }
 
@@ -90,7 +90,7 @@ fun mustDoEffectCoeffectExtractors(action: ConeActionDeclaration) = coeffectActi
         val safeBuilderAction = action.toSafeBuilderAction(it, target.parameter.parameterIndex) ?: return@onOwnerExit noActions()
         actions {
             verifiers += SafeBuilderCoeffectContextVerifier(safeBuilderAction, action.kind)
-            cleaners += SafeBuilderCoeffectContextCleaner(safeBuilderAction)
+            modifiers += SafeBuilderCoeffectContextCleaner(safeBuilderAction)
         }
     }
 }
@@ -102,7 +102,7 @@ fun providesEffectCoeffectExtractors(action: ConeActionDeclaration) = coeffectAc
         val targetSymbol = functionCall.getTargetSymbol(action.target)
         val safeBuilderAction = action.toSafeBuilderAction(targetSymbol) ?: return@onOwnerCall noActions()
         actions {
-            providers += SafeBuilderCoeffectContextProvider(safeBuilderAction, action.kind)
+            modifiers += SafeBuilderCoeffectContextProvider(safeBuilderAction, action.kind)
         }
     }
 
@@ -111,7 +111,7 @@ fun providesEffectCoeffectExtractors(action: ConeActionDeclaration) = coeffectAc
         val safeBuilderAction = action.toSafeBuilderAction(it, targetSymbol.parameterIndex) ?: return@onOwnerExit noActions()
         actions {
             verifiers += SafeBuilderCoeffectContextVerifier(safeBuilderAction, action.kind)
-            cleaners += SafeBuilderCoeffectContextCleaner(safeBuilderAction)
+            modifiers += SafeBuilderCoeffectContextCleaner(safeBuilderAction)
         }
     }
 }

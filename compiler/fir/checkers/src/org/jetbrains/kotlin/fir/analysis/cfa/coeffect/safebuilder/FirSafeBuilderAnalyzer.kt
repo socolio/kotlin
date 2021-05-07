@@ -74,7 +74,7 @@ object FirSafeBuilderAnalyzer : CoeffectFamilyAnalyzer() {
             if (isSafeBuilderConstructionMember(functionSymbol)) {
                 val safeBuilderAction = SafeBuilderAction(receiverSymbol, functionSymbol, SafeBuilderActionType.INVOCATION)
                 data[node] = coeffectActions {
-                    providers += SafeBuilderCoeffectContextProvider(safeBuilderAction, EventOccurrencesRange.EXACTLY_ONCE)
+                    modifiers += SafeBuilderCoeffectContextProvider(safeBuilderAction, EventOccurrencesRange.EXACTLY_ONCE)
                 }
                 return
             }
@@ -82,7 +82,7 @@ object FirSafeBuilderAnalyzer : CoeffectFamilyAnalyzer() {
             if (functionSymbol.fir.annotations.any { it.toResolvedCallableSymbol()?.callableId == buildAnnotation }) {
                 safeBuilderClass.forEachSafeBuilderMember { member, actionType ->
                     data[node] = coeffectActions {
-                        cleaners += SafeBuilderCoeffectContextCleaner(SafeBuilderAction(receiverSymbol, member.symbol, actionType))
+                        modifiers += SafeBuilderCoeffectContextCleaner(SafeBuilderAction(receiverSymbol, member.symbol, actionType))
                     }
                 }
             }
@@ -95,7 +95,7 @@ object FirSafeBuilderAnalyzer : CoeffectFamilyAnalyzer() {
 
             val safeBuilderAction = SafeBuilderAction(receiverSymbol, propertySymbol, SafeBuilderActionType.INITIALIZATION)
             data[node] = coeffectActions {
-                providers += SafeBuilderCoeffectContextProvider(safeBuilderAction, EventOccurrencesRange.EXACTLY_ONCE)
+                modifiers += SafeBuilderCoeffectContextProvider(safeBuilderAction, EventOccurrencesRange.EXACTLY_ONCE)
             }
         }
 
@@ -112,7 +112,7 @@ object FirSafeBuilderAnalyzer : CoeffectFamilyAnalyzer() {
             constructedClass.forEachSafeBuilderMember { member, actionType ->
                 val safeBuilderAction = SafeBuilderAction(node.fir.symbol, member.symbol, actionType)
                 data[node] = coeffectActions {
-                    providers += SafeBuilderCoeffectContextProvider(safeBuilderAction, EventOccurrencesRange.ZERO)
+                    modifiers += SafeBuilderCoeffectContextProvider(safeBuilderAction, EventOccurrencesRange.ZERO)
                 }
             }
         }

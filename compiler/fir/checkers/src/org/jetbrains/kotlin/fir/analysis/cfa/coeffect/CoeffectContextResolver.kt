@@ -8,9 +8,7 @@ package org.jetbrains.kotlin.fir.analysis.cfa.coeffect
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
 import org.jetbrains.kotlin.fir.analysis.cfa.ControlFlowInfo
-import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectContext
-import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectContextModifier
-import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectFamily
+import org.jetbrains.kotlin.fir.contracts.contextual.*
 import org.jetbrains.kotlin.fir.resolve.dfa.cfg.CFGNode
 import org.jetbrains.kotlin.fir.resolve.dfa.cfg.ControlFlowGraphVisitor
 
@@ -26,9 +24,8 @@ class CoeffectContextResolver(
         var dataForNode = if (incomingData.isEmpty()) CoeffectContextOnNodes.EMPTY else incomingData.reduce(CoeffectContextOnNodes::merge)
         val nodeActions = actionsOnNodes[node] ?: return dataForNode
 
-        nodeActions.forEach { actions ->
-            actions.providers.forEach { dataForNode = dataForNode.tryModifyContext(it, prevData) }
-            actions.cleaners.forEach { dataForNode = dataForNode.tryModifyContext(it, prevData) }
+        for ((family, familyActions) in nodeActions) {
+            dataForNode = dataForNode.tryModifyContext(family, familyActions, prevData)
         }
 
         return dataForNode
@@ -62,20 +59,24 @@ class CoeffectContextOnNodes(
 
     fun isFixed(family: CoeffectFamily): Boolean = super.get(family)?.second ?: false
 
-    fun tryModifyContext(modifier: CoeffectContextModifier?, prevData: CoeffectContextOnNodes?): CoeffectContextOnNodes {
-        if (modifier == null) return this
-        val (context, _) = this[modifier.family]
+    fun tryModifyContext(
+        family: CoeffectFamily,
+        actions: CoeffectContextActions,
+        prevData: CoeffectContextOnNodes?
+    ): CoeffectContextOnNodes {
+        if (actions.modifiers.isEmpty()) return this
+        val (context, _) = this[family]
 
-        val prevContext = prevData?.get(modifier.family)
+        val prevContext = prevData?.get(family)
         if (prevContext != null && prevContext.second) {
             return when {
                 prevContext.first === context -> this
-                else -> put(modifier.family, prevContext)
+                else -> put(family, prevContext)
             }
         }
 
-        val newContext = modifier.modifyContext(context)
+        val newContext = actions.modifiers.fold(context) { c, modifier -> modifier.modifyContext(c) }
         val newContextFixed = prevContext != null && newContext == prevContext.first
-        return put(modifier.family, newContext to newContextFixed)
+        return put(family, newContext to newContextFixed)
     }
 }

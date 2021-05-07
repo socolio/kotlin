@@ -32,25 +32,27 @@ interface CoeffectContextVerifier : CoeffectContextAction {
 }
 
 class CoeffectContextActions(
-    val providers: List<CoeffectContextProvider> = emptyList(),
-    val verifiers: List<CoeffectContextVerifier> = emptyList(),
-    val cleaners: List<CoeffectContextCleaner> = emptyList()
+    val modifiers: MutableList<CoeffectContextModifier> = mutableListOf(),
+    val verifiers: MutableList<CoeffectContextVerifier> = mutableListOf()
 ) {
+    fun add(actions: CoeffectContextActions) {
+        modifiers += actions.modifiers
+        verifiers += actions.verifiers
+    }
 
     companion object {
         val EMPTY = CoeffectContextActions()
     }
 
-    val isEmpty: Boolean get() = providers.isEmpty() && verifiers.isEmpty() && cleaners.isEmpty()
-
+    val family: CoeffectFamily? get() = modifiers.firstOrNull()?.family ?: verifiers.firstOrNull()?.family
+    val isEmpty: Boolean get() = modifiers.isEmpty() && verifiers.isEmpty()
 }
 
 class CoeffectContextActionsBuilder {
-    val providers = mutableListOf<CoeffectContextProvider>()
+    val modifiers = mutableListOf<CoeffectContextModifier>()
     val verifiers = mutableListOf<CoeffectContextVerifier>()
-    val cleaners = mutableListOf<CoeffectContextCleaner>()
 
-    fun build(): CoeffectContextActions = CoeffectContextActions(providers, verifiers, cleaners)
+    fun build(): CoeffectContextActions = CoeffectContextActions(modifiers, verifiers)
 }
 
 inline fun coeffectActions(block: CoeffectContextActionsBuilder.() -> Unit): CoeffectContextActions {

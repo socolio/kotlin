@@ -6,11 +6,13 @@
 package org.jetbrains.kotlin.fir.analysis.cfa.coeffect
 
 import org.jetbrains.kotlin.fir.FirElement
-import org.jetbrains.kotlin.fir.FirSession
-import org.jetbrains.kotlin.fir.analysis.cfa.*
+import org.jetbrains.kotlin.fir.analysis.cfa.TraverseDirection
+import org.jetbrains.kotlin.fir.analysis.cfa.collectDataForNodeOptimized
+import org.jetbrains.kotlin.fir.analysis.cfa.previousCfgNodes
+import org.jetbrains.kotlin.fir.analysis.cfa.traverse
 import org.jetbrains.kotlin.fir.analysis.checkers.cfa.FirControlFlowChecker
 import org.jetbrains.kotlin.fir.analysis.diagnostics.DiagnosticReporter
-import org.jetbrains.kotlin.fir.contracts.contextual.diagnostics.CoeffectContextVerificationError
+import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectFamily
 import org.jetbrains.kotlin.fir.declarations.FirAnonymousFunction
 import org.jetbrains.kotlin.fir.declarations.FirFunction
 import org.jetbrains.kotlin.fir.expressions.FirFunctionCall
@@ -31,25 +33,24 @@ class FirCoeffectAnalyzer(vararg val familyAnalyzers: CoeffectFamilyAnalyzer) : 
         familyAnalyzers.forEach { it.analyze(function, graph, reporter) }
         val familyAnalyzers = familyAnalyzers.associateBy { it.family }
 
-        val lambdaToOwnerFunction = function.collectLambdaOwnerFunctions()
-        val actionsOnNodes = graph.collectActionsOnNodes(CoeffectActionsCollector(familyAnalyzers, lambdaToOwnerFunction))
-        if (!actionsOnNodes.hasVerifiers()) return
+        val actionsOnNodes = graph.collectActionsOnNodes(function, familyAnalyzers)
+        if (!actionsOnNodes.hasVerifiers) return
 
         val contextOnNodes = graph.buildContextOnNodes(actionsOnNodes)
 
-        for ((node, actionsList) in actionsOnNodes) {
+        for ((node, nodeActions) in actionsOnNodes) {
             val prevNode = node.previousCfgNodes.firstOrNull() ?: node
             val data = contextOnNodes[node] ?: continue
             val prevData = contextOnNodes[prevNode] ?: continue
 
-            for (actions in actionsList) {
-                for (verifier in actions.verifiers) {
-                    val (context, _) = (if (verifier.needVerifyOnCurrentNode) data else prevData)[verifier.family]
+            for ((family, familyActions) in nodeActions) {
+                for (verifier in familyActions.verifiers) {
+                    val (context, _) = (if (verifier.needVerifyOnCurrentNode) data else prevData)[family]
                     val errors = verifier.verifyContext(context, function.session)
 
                     for (error in errors) {
                         node.fir.source?.let {
-                            val familyAnalyzer = familyAnalyzers[error.family]
+                            val familyAnalyzer = familyAnalyzers[family]
                             val firError = familyAnalyzer?.getFirError(error, it)
                             reporter.report(firError)
                         }
@@ -59,7 +60,12 @@ class FirCoeffectAnalyzer(vararg val familyAnalyzers: CoeffectFamilyAnalyzer) : 
         }
     }
 
-    private fun ControlFlowGraph.collectActionsOnNodes(collector: CoeffectActionsCollector): CoeffectActionsOnNodes {
+    private fun ControlFlowGraph.collectActionsOnNodes(
+        function: FirFunction<*>,
+        familyAnalyzers: Map<CoeffectFamily, CoeffectFamilyAnalyzer>
+    ): CoeffectActionsOnNodes {
+        val lambdaToOwnerFunction = function.collectLambdaOwnerFunctions()
+        val collector = CoeffectActionsCollector(familyAnalyzers, lambdaToOwnerFunction)
         val data = CoeffectActionsOnNodes()
         traverse(TraverseDirection.Forward, collector, data)
         return data
