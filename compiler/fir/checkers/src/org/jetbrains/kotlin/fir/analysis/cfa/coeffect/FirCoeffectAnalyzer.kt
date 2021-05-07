@@ -7,10 +7,7 @@ package org.jetbrains.kotlin.fir.analysis.cfa.coeffect
 
 import org.jetbrains.kotlin.fir.FirElement
 import org.jetbrains.kotlin.fir.FirSession
-import org.jetbrains.kotlin.fir.analysis.cfa.TraverseDirection
-import org.jetbrains.kotlin.fir.analysis.cfa.collectDataForNode
-import org.jetbrains.kotlin.fir.analysis.cfa.previousCfgNodes
-import org.jetbrains.kotlin.fir.analysis.cfa.traverse
+import org.jetbrains.kotlin.fir.analysis.cfa.*
 import org.jetbrains.kotlin.fir.analysis.checkers.cfa.FirControlFlowChecker
 import org.jetbrains.kotlin.fir.analysis.diagnostics.DiagnosticReporter
 import org.jetbrains.kotlin.fir.contracts.contextual.diagnostics.CoeffectContextVerificationError
@@ -31,10 +28,10 @@ class FirCoeffectAnalyzer(vararg val familyAnalyzers: CoeffectFamilyAnalyzer) : 
     override fun analyze(graph: ControlFlowGraph, reporter: DiagnosticReporter) {
         val function = graph.declaration as? FirFunction<*> ?: return
 
-        val lambdaToOwnerFunction = function.collectLambdaOwnerFunctions()
         familyAnalyzers.forEach { it.analyze(function, graph, reporter) }
         val familyAnalyzers = familyAnalyzers.associateBy { it.family }
 
+        val lambdaToOwnerFunction = function.collectLambdaOwnerFunctions()
         val actionsOnNodes = graph.collectActionsOnNodes(CoeffectActionsCollector(familyAnalyzers, lambdaToOwnerFunction))
         if (!actionsOnNodes.hasVerifiers()) return
 
@@ -47,7 +44,7 @@ class FirCoeffectAnalyzer(vararg val familyAnalyzers: CoeffectFamilyAnalyzer) : 
 
             for (actions in actionsList) {
                 for (verifier in actions.verifiers) {
-                    val context = (if (verifier.needVerifyOnCurrentNode) data else prevData)[verifier.family]
+                    val (context, _) = (if (verifier.needVerifyOnCurrentNode) data else prevData)[verifier.family]
                     val errors = verifier.verifyContext(context, function.session)
 
                     for (error in errors) {
@@ -69,7 +66,7 @@ class FirCoeffectAnalyzer(vararg val familyAnalyzers: CoeffectFamilyAnalyzer) : 
     }
 
     private fun ControlFlowGraph.buildContextOnNodes(actionsOnNodes: CoeffectActionsOnNodes): Map<CFGNode<*>, CoeffectContextOnNodes> =
-        collectDataForNode(TraverseDirection.Forward, CoeffectContextOnNodes.EMPTY, CoeffectContextResolver(actionsOnNodes))
+        collectDataForNodeOptimized(TraverseDirection.Forward, CoeffectContextOnNodes.EMPTY, CoeffectContextResolver(actionsOnNodes))
 
     private fun FirFunction<*>.collectLambdaOwnerFunctions(): Map<FirAnonymousFunction, Pair<FirFunction<*>, AbstractFirBasedSymbol<*>>> {
         val lambdaToOwnerFunction = mutableMapOf<FirAnonymousFunction, Pair<FirFunction<*>, AbstractFirBasedSymbol<*>>>()

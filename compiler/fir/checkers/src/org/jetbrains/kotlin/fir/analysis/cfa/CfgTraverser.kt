@@ -72,3 +72,48 @@ private fun <I : ControlFlowInfo<I, K, V>, K : Any, V : Any> ControlFlowGraph.co
         }
     }
 }
+
+fun <I : ControlFlowInfo<I, K, V>, K : Any, V : Any> ControlFlowGraph.collectDataForNodeOptimized(
+    direction: TraverseDirection,
+    initialInfo: I,
+    visitor: ControlFlowGraphVisitor<I, Pair<Collection<I>, I?>>
+): Map<CFGNode<*>, I> {
+    val nodeMap = LinkedHashMap<CFGNode<*>, I>()
+    val startNode = getEnterNode(direction)
+    nodeMap[startNode] = initialInfo
+
+    val changed = mutableMapOf<CFGNode<*>, Boolean>()
+    do {
+        collectDataForNodeOptimizedInternal(direction, initialInfo, visitor, nodeMap, changed)
+    } while (changed.any { it.value })
+
+    return nodeMap
+}
+
+private fun <I : ControlFlowInfo<I, K, V>, K : Any, V : Any> ControlFlowGraph.collectDataForNodeOptimizedInternal(
+    direction: TraverseDirection,
+    initialInfo: I,
+    visitor: ControlFlowGraphVisitor<I, Pair<Collection<I>, I?>>,
+    nodeMap: MutableMap<CFGNode<*>, I>,
+    changed: MutableMap<CFGNode<*>, Boolean>
+) {
+    val nodes = getNodesInOrder(direction)
+    for (node in nodes) {
+        val previousNodes = when (direction) {
+            TraverseDirection.Forward -> node.previousCfgNodes
+            TraverseDirection.Backward -> node.followingCfgNodes
+        }
+        val previousData = previousNodes.mapNotNull { nodeMap[it] }
+        val data = nodeMap[node]
+        val newData = node.accept(visitor, previousData to data)
+        val hasChanged = newData != data
+        changed[node] = hasChanged
+        if (hasChanged) {
+            nodeMap[node] = newData
+        }
+        if (node is CFGNodeWithCfgOwner<*>) {
+            node.subGraphs.forEach { it.collectDataForNodeOptimizedInternal(direction, initialInfo, visitor, nodeMap, changed) }
+        }
+    }
+}
+

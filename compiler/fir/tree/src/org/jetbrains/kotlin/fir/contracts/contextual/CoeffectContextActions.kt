@@ -12,12 +12,18 @@ interface CoeffectContextAction {
     val family: CoeffectFamily
 }
 
-interface CoeffectContextCleaner : CoeffectContextAction {
-    fun cleanupContext(context: CoeffectContext): CoeffectContext
+interface CoeffectContextModifier : CoeffectContextAction {
+    fun modifyContext(context: CoeffectContext): CoeffectContext
 }
 
-interface CoeffectContextProvider : CoeffectContextAction {
+interface CoeffectContextCleaner : CoeffectContextModifier {
+    fun cleanupContext(context: CoeffectContext): CoeffectContext
+    override fun modifyContext(context: CoeffectContext): CoeffectContext = cleanupContext(context)
+}
+
+interface CoeffectContextProvider : CoeffectContextModifier {
     fun provideContext(context: CoeffectContext): CoeffectContext
+    override fun modifyContext(context: CoeffectContext): CoeffectContext = provideContext(context)
 }
 
 interface CoeffectContextVerifier : CoeffectContextAction {
