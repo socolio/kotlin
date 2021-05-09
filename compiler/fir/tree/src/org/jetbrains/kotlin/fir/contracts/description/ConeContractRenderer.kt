@@ -53,6 +53,18 @@ class ConeContractRenderer(private val builder: StringBuilder) : ConeContractDes
         requiresActionEffect.action.accept(this, data)
     }
 
+    override fun visitRequireOpenEffectDeclaration(requireOpenEffect: ConeRequireOpenEffectDeclaration, data: Nothing?) {
+        builder.append("RequireOpen(")
+        requireOpenEffect.resource.accept(this, data)
+        builder.append(")")
+    }
+
+    override fun visitClosesResourceEffectDeclaration(closesResourceEffect: ConeClosesResourceEffectDeclaration, data: Nothing?) {
+        builder.append("ClosesResource(")
+        closesResourceEffect.resource.accept(this, data)
+        builder.append(")")
+    }
+
     override fun visitLogicalBinaryOperationContractExpression(binaryLogicExpression: ConeBinaryLogicExpression, data: Nothing?) {
         inBracketsIfNecessary(binaryLogicExpression, binaryLogicExpression.left) { binaryLogicExpression.left.accept(this, data) }
         builder.append(" ${binaryLogicExpression.kind.token} ")

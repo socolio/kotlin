@@ -6,7 +6,7 @@
 package org.jetbrains.kotlin.fir.contracts.description
 
 import org.jetbrains.kotlin.contracts.description.EventOccurrencesRange
-import org.jetbrains.kotlin.fir.contracts.contextual.declaration.CoeffectActionExtractors
+import org.jetbrains.kotlin.fir.contracts.contextual.declaration.CoeffectFamilyContextHandler
 import org.jetbrains.kotlin.fir.contracts.contextual.declaration.ConeCoeffectEffectDeclaration
 import org.jetbrains.kotlin.fir.contracts.contextual.declaration.ConeLambdaCoeffectEffectDeclaration
 import org.jetbrains.kotlin.fir.types.ConeKotlinType
@@ -55,8 +55,8 @@ class ConeCallsEffectDeclaration(val valueParameterReference: ConeValueParameter
 /**
  * Effect which specifies that owner function can be called only in context where [exceptionType] is checked
  */
-class ConeThrowsEffectDeclaration(val exceptionType: ConeKotlinType, actionExtractors: CoeffectActionExtractors) :
-    ConeCoeffectEffectDeclaration(actionExtractors) {
+class ConeThrowsEffectDeclaration(val exceptionType: ConeKotlinType, contextHandler: CoeffectFamilyContextHandler) :
+    ConeCoeffectEffectDeclaration(contextHandler) {
     override fun <R, D> accept(contractDescriptionVisitor: ConeContractDescriptionVisitor<R, D>, data: D): R =
         contractDescriptionVisitor.visitThrowsEffectDeclaration(this, data)
 }
@@ -68,8 +68,8 @@ class ConeThrowsEffectDeclaration(val exceptionType: ConeKotlinType, actionExtra
 class ConeCalledInTryCatchEffectDeclaration(
     lambda: ConeValueParameterReference,
     val exceptionType: ConeKotlinType,
-    actionExtractors: CoeffectActionExtractors
-) : ConeLambdaCoeffectEffectDeclaration(lambda, actionExtractors) {
+    contextHandler: CoeffectFamilyContextHandler
+) : ConeLambdaCoeffectEffectDeclaration(lambda, contextHandler) {
 
     override fun <R, D> accept(contractDescriptionVisitor: ConeContractDescriptionVisitor<R, D>, data: D): R =
         contractDescriptionVisitor.visitCalledInTryCatchEffectDeclaration(this, data)
@@ -85,8 +85,8 @@ interface ConeSafeBuilderEffectDeclaration {
 class ConeMustDoEffectDeclaration(
     lambda: ConeValueParameterReference,
     override val action: ConeActionDeclaration,
-    actionExtractors: CoeffectActionExtractors
-) : ConeLambdaCoeffectEffectDeclaration(lambda, actionExtractors), ConeSafeBuilderEffectDeclaration {
+    contextHandler: CoeffectFamilyContextHandler
+) : ConeLambdaCoeffectEffectDeclaration(lambda, contextHandler), ConeSafeBuilderEffectDeclaration {
 
     override fun <R, D> accept(contractDescriptionVisitor: ConeContractDescriptionVisitor<R, D>, data: D): R =
         contractDescriptionVisitor.visitMustDoEffectDeclaration(this, data)
@@ -97,8 +97,8 @@ class ConeMustDoEffectDeclaration(
  */
 class ConeProvidesActionEffectDeclaration(
     override val action: ConeActionDeclaration,
-    actionExtractors: CoeffectActionExtractors
-) : ConeCoeffectEffectDeclaration(actionExtractors), ConeSafeBuilderEffectDeclaration {
+    contextHandler: CoeffectFamilyContextHandler
+) : ConeCoeffectEffectDeclaration(contextHandler), ConeSafeBuilderEffectDeclaration {
 
     override fun <R, D> accept(contractDescriptionVisitor: ConeContractDescriptionVisitor<R, D>, data: D): R =
         contractDescriptionVisitor.visitProvidesActionEffectDeclaration(this, data)
@@ -109,9 +109,37 @@ class ConeProvidesActionEffectDeclaration(
  */
 class ConeRequiresActionEffectDeclaration(
     override val action: ConeActionDeclaration,
-    actionExtractors: CoeffectActionExtractors
-) : ConeCoeffectEffectDeclaration(actionExtractors), ConeSafeBuilderEffectDeclaration {
+    contextHandler: CoeffectFamilyContextHandler
+) : ConeCoeffectEffectDeclaration(contextHandler), ConeSafeBuilderEffectDeclaration {
 
     override fun <R, D> accept(contractDescriptionVisitor: ConeContractDescriptionVisitor<R, D>, data: D): R =
         contractDescriptionVisitor.visitRequiresActionEffectDeclaration(this, data)
+}
+
+interface ConeResourceManagementEffectDeclaration {
+    val resource: ConeValueParameterReference
+}
+
+/**
+ * Effect which specifies that [resource] is required to be open
+ */
+class ConeRequireOpenEffectDeclaration(
+    override val resource: ConeValueParameterReference,
+    contextHandler: CoeffectFamilyContextHandler
+) : ConeCoeffectEffectDeclaration(contextHandler), ConeResourceManagementEffectDeclaration {
+
+    override fun <R, D> accept(contractDescriptionVisitor: ConeContractDescriptionVisitor<R, D>, data: D): R =
+        contractDescriptionVisitor.visitRequireOpenEffectDeclaration(this, data)
+}
+
+/**
+ * Effect which specifies that [resource] is closed after function invocation
+ */
+class ConeClosesResourceEffectDeclaration(
+    override val resource: ConeValueParameterReference,
+    contextHandler: CoeffectFamilyContextHandler
+) : ConeCoeffectEffectDeclaration(contextHandler), ConeResourceManagementEffectDeclaration {
+
+    override fun <R, D> accept(contractDescriptionVisitor: ConeContractDescriptionVisitor<R, D>, data: D): R =
+        contractDescriptionVisitor.visitClosesResourceEffectDeclaration(this, data)
 }

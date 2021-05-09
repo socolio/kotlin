@@ -9,15 +9,15 @@ import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectFamily
 import org.jetbrains.kotlin.fir.contracts.description.ConeEffectDeclaration
 import org.jetbrains.kotlin.fir.contracts.description.ConeValueParameterReference
 
-abstract class ConeAbstractCoeffectEffectDeclaration(val actionExtractors: CoeffectActionExtractors) : ConeEffectDeclaration() {
-    val family: CoeffectFamily get() = actionExtractors.family
+abstract class ConeAbstractCoeffectEffectDeclaration(val contextHandler: CoeffectFamilyContextHandler) : ConeEffectDeclaration() {
+    val family: CoeffectFamily get() = contextHandler.family
 }
 
 open class ConeCoeffectEffectDeclaration(
-    actionExtractors: CoeffectActionExtractors
-) : ConeAbstractCoeffectEffectDeclaration(actionExtractors)
+    contextHandler: CoeffectFamilyContextHandler
+) : ConeAbstractCoeffectEffectDeclaration(contextHandler)
 
 open class ConeLambdaCoeffectEffectDeclaration(
     val lambda: ConeValueParameterReference,
-    actionExtractors: CoeffectActionExtractors
-) : ConeAbstractCoeffectEffectDeclaration(actionExtractors)
+    contextHandler: CoeffectFamilyContextHandler
+) : ConeAbstractCoeffectEffectDeclaration(contextHandler)

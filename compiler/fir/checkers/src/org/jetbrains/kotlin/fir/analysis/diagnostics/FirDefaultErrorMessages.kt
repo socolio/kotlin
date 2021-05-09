@@ -77,6 +77,8 @@ import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.RECURSION_IN_SUPE
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.REDECLARATION
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.REDUNDANT_MODIFIER
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.REPEATED_MODIFIER
+import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.RESOURCE_SHOULD_BE_CLOSED
+import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.RESOURCE_SHOULD_BE_OPEN
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.RETURN_NOT_ALLOWED
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.SEALED_CLASS_CONSTRUCTOR_CALL
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.SEALED_SUPERTYPE
@@ -93,6 +95,7 @@ import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.TYPE_PARAMETERS_I
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.TYPE_PARAMETERS_IN_OBJECT
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.TYPE_PARAMETER_AS_SUPERTYPE
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.UNCHECKED_EXCEPTION
+import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.UNDEFINED_RESOURCE_STATE
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.UNEXPECTED_COEFFECT_CONTEXT
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.UNINITIALIZED_VARIABLE
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.UNPROVIDED_SAFE_BUILDER_INITIALIZATION
@@ -303,6 +306,21 @@ class FirDefaultErrorMessages : DefaultErrorMessages.Extension {
                 SYMBOL, SYMBOL
             )
             map.put(NOT_A_SAFE_BUILDER_MEMBER, "'{3}::{4}' is not a member of safe builder", SYMBOL, SYMBOL)
+            map.put(
+                UNDEFINED_RESOURCE_STATE,
+                "Undefined {2} resource state",
+                SYMBOL,
+            )
+            map.put(
+                RESOURCE_SHOULD_BE_OPEN,
+                "Resource {2} shold be open",
+                SYMBOL,
+            )
+            map.put(
+                RESOURCE_SHOULD_BE_CLOSED,
+                "Resource {2} shold be closed",
+                SYMBOL,
+            )
 
             // Extended checkers group
 //            map.put(REDUNDANT_VISIBILITY_MODIFIER, ...) // &

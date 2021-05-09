@@ -9,7 +9,7 @@ import org.jetbrains.kotlin.fir.FirElement
 import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectContext
 import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectContextCombiner
 import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectFamily
-import org.jetbrains.kotlin.fir.contracts.contextual.declaration.coeffectActionExtractors
+import org.jetbrains.kotlin.fir.contracts.contextual.declaration.handleCoeffectContext
 import org.jetbrains.kotlin.fir.types.ConeKotlinType
 
 object CheckedExceptionCoeffectFamily : CoeffectFamily {
@@ -28,7 +28,7 @@ object CheckedExceptionCoeffectContextCombiner : CoeffectContextCombiner {
     }
 }
 
-fun throwsEffectCoeffectExtractors(exceptionType: ConeKotlinType) = coeffectActionExtractors {
+fun throwsEffectContextHandler(exceptionType: ConeKotlinType) = handleCoeffectContext {
     family = CheckedExceptionCoeffectFamily
 
     onOwnerCall {
@@ -39,12 +39,12 @@ fun throwsEffectCoeffectExtractors(exceptionType: ConeKotlinType) = coeffectActi
 
     onOwnerEnter {
         actions {
-            modifiers += CatchesExceptionCoeffectContextProvider(exceptionType, it)
+            modifiers += CatchesExceptionCoeffectContextProvider(exceptionType, firElement)
         }
     }
 }
 
-fun calledInTryCatchEffectCoeffectExtractors(exceptionType: ConeKotlinType) = coeffectActionExtractors {
+fun calledInTryCatchEffectContextHandler(exceptionType: ConeKotlinType) = handleCoeffectContext {
     family = CheckedExceptionCoeffectFamily
 
     onOwnerCall {
@@ -55,7 +55,7 @@ fun calledInTryCatchEffectCoeffectExtractors(exceptionType: ConeKotlinType) = co
 
     onOwnerEnter {
         actions {
-            modifiers += CatchesExceptionCoeffectContextProvider(exceptionType, it)
+            modifiers += CatchesExceptionCoeffectContextProvider(exceptionType, firElement)
         }
     }
 }

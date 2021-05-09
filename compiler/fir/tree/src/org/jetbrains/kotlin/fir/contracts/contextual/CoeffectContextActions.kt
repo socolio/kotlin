@@ -35,9 +35,11 @@ class CoeffectContextActions(
     val modifiers: MutableList<CoeffectContextModifier> = mutableListOf(),
     val verifiers: MutableList<CoeffectContextVerifier> = mutableListOf()
 ) {
-    fun add(actions: CoeffectContextActions) {
+    fun add(actions: CoeffectContextActions): CoeffectContextActions {
+        if (this === EMPTY) return actions
         modifiers += actions.modifiers
         verifiers += actions.verifiers
+        return this
     }
 
     companion object {
