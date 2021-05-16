@@ -25,7 +25,7 @@ import org.jetbrains.kotlin.fir.resolve.dfa.contracts.createArgumentsMapping
 import org.jetbrains.kotlin.fir.symbols.AbstractFirBasedSymbol
 import org.jetbrains.kotlin.fir.visitors.FirVisitorVoid
 
-class FirCoeffectAnalyzer(vararg val familyAnalyzers: CoeffectFamilyAnalyzer) : FirControlFlowChecker() {
+class FirCoeffectAnalyzer(private vararg val familyAnalyzers: CoeffectFamilyAnalyzer) : FirControlFlowChecker() {
 
     override fun analyze(graph: ControlFlowGraph, reporter: DiagnosticReporter) {
         val function = graph.declaration as? FirFunction<*> ?: return
@@ -33,12 +33,12 @@ class FirCoeffectAnalyzer(vararg val familyAnalyzers: CoeffectFamilyAnalyzer) : 
         familyAnalyzers.forEach { it.analyze(function, graph, reporter) }
         val familyAnalyzers = familyAnalyzers.associateBy { it.family }
 
-        val actionsOnNodes = graph.collectActionsOnNodes(function, familyAnalyzers)
-        if (!actionsOnNodes.hasVerifiers) return
+        val rawContextOnNodes = graph.buildRawContext(function, familyAnalyzers)
+        if (!rawContextOnNodes.hasVerifiers) return
 
-        val contextOnNodes = graph.buildContextOnNodes(actionsOnNodes)
+        val contextOnNodes = graph.resolveContext(rawContextOnNodes)
 
-        for ((node, nodeActions) in actionsOnNodes) {
+        for ((node, nodeActions) in rawContextOnNodes) {
             val prevNode = node.previousCfgNodes.firstOrNull() ?: node
             val data = contextOnNodes[node] ?: continue
             val prevData = contextOnNodes[prevNode] ?: continue
@@ -60,19 +60,19 @@ class FirCoeffectAnalyzer(vararg val familyAnalyzers: CoeffectFamilyAnalyzer) : 
         }
     }
 
-    private fun ControlFlowGraph.collectActionsOnNodes(
+    private fun ControlFlowGraph.buildRawContext(
         function: FirFunction<*>,
         familyAnalyzers: Map<CoeffectFamily, CoeffectFamilyAnalyzer>
-    ): CoeffectActionsOnNodes {
+    ): CoeffectRawContextOnNodes {
         val lambdaToOwnerFunction = function.collectLambdaOwnerFunctions()
-        val collector = CoeffectActionsCollector(familyAnalyzers, lambdaToOwnerFunction)
-        val data = CoeffectActionsOnNodes()
+        val collector = CoeffectRawContextBuilder(function, familyAnalyzers, lambdaToOwnerFunction)
+        val data = CoeffectRawContextOnNodes()
         traverse(TraverseDirection.Forward, collector, data)
         return data
     }
 
-    private fun ControlFlowGraph.buildContextOnNodes(actionsOnNodes: CoeffectActionsOnNodes): Map<CFGNode<*>, CoeffectContextOnNodes> =
-        collectDataForNodeOptimized(TraverseDirection.Forward, CoeffectContextOnNodes.EMPTY, CoeffectContextResolver(actionsOnNodes))
+    private fun ControlFlowGraph.resolveContext(rawContext: CoeffectRawContextOnNodes): Map<CFGNode<*>, CoeffectContextOnNodes> =
+        collectDataForNodeOptimized(TraverseDirection.Forward, CoeffectContextOnNodes.EMPTY, CoeffectContextResolver(rawContext))
 
     private fun FirFunction<*>.collectLambdaOwnerFunctions(): Map<FirAnonymousFunction, Pair<FirFunction<*>, AbstractFirBasedSymbol<*>>> {
         val lambdaToOwnerFunction = mutableMapOf<FirAnonymousFunction, Pair<FirFunction<*>, AbstractFirBasedSymbol<*>>>()

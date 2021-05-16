@@ -13,7 +13,7 @@ import org.jetbrains.kotlin.fir.resolve.dfa.cfg.CFGNode
 import org.jetbrains.kotlin.fir.resolve.dfa.cfg.ControlFlowGraphVisitor
 
 class CoeffectContextResolver(
-    val actionsOnNodes: CoeffectActionsOnNodes,
+    val rawContext: CoeffectRawContextOnNodes,
 ) : ControlFlowGraphVisitor<CoeffectContextOnNodes, Pair<Collection<CoeffectContextOnNodes>, CoeffectContextOnNodes?>>() {
 
     override fun visitNode(
@@ -22,7 +22,7 @@ class CoeffectContextResolver(
     ): CoeffectContextOnNodes {
         val (incomingData, prevData) = data
         var dataForNode = if (incomingData.isEmpty()) CoeffectContextOnNodes.EMPTY else incomingData.reduce(CoeffectContextOnNodes::merge)
-        val nodeActions = actionsOnNodes[node] ?: return dataForNode
+        val nodeActions = rawContext[node] ?: return dataForNode
 
         for ((family, familyActions) in nodeActions) {
             dataForNode = dataForNode.tryModifyContext(family, familyActions, prevData)

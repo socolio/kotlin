@@ -9,6 +9,7 @@ import org.jetbrains.kotlin.fir.FirElement
 import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectContextActions
 import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectContextActionsBuilder
 import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectFamily
+import org.jetbrains.kotlin.fir.contracts.contextual.coeffectActions
 import org.jetbrains.kotlin.fir.declarations.FirFunction
 import org.jetbrains.kotlin.fir.expressions.FirFunctionCall
 import org.jetbrains.kotlin.fir.symbols.AbstractFirBasedSymbol
@@ -17,7 +18,8 @@ interface CoeffectNodeContextBuilder<E : FirElement> {
     val firElement: E
 
     fun addActions(actions: CoeffectContextActions)
-    fun trackSymbolForLeaking(symbol: AbstractFirBasedSymbol<*>)
+    fun trackSymbolForLeaking(family: CoeffectFamily, symbol: AbstractFirBasedSymbol<*>, onLeakActions: () -> CoeffectContextActions)
+    fun markSymbolAsNotLeaked(functionCall: FirFunctionCall, symbol: AbstractFirBasedSymbol<*>, family: CoeffectFamily)
 }
 
 typealias OwnerCallCoeffectContextHandler = CoeffectNodeContextBuilder<FirFunctionCall>.() -> Unit
@@ -45,6 +47,16 @@ class CoeffectFamilyContextBuilder {
         addActions(actionsBuilder.build())
     }
 
+    fun CoeffectNodeContextBuilder<*>.onSymbolLeak(symbol: AbstractFirBasedSymbol<*>, block: CoeffectContextActionsBuilder.() -> Unit) {
+        val family = family ?: throw AssertionError("Undefined coeffect family")
+        trackSymbolForLeaking(family, symbol) { coeffectActions(block) }
+    }
+
+    fun CoeffectNodeContextBuilder<FirFunctionCall>.symbolNotLeaked(symbol: AbstractFirBasedSymbol<*>) {
+        val family = family ?: throw AssertionError("Undefined coeffect family")
+        markSymbolAsNotLeaked(firElement, symbol, family)
+    }
+
     fun onOwnerCall(extractor: OwnerCallCoeffectContextHandler) {
         onOwnerCall = extractor
     }
@@ -68,3 +80,5 @@ fun handleCoeffectContext(block: CoeffectFamilyContextBuilder.() -> Unit): Coeff
     builder.block()
     return builder.build()
 }
+
+operator fun CoeffectNodeContextBuilder<*>.plusAssign(actions: CoeffectContextActions) = addActions(actions)

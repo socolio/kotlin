@@ -6,11 +6,14 @@
 package org.jetbrains.kotlin.fir.analysis.cfa.coeffect
 
 import org.jetbrains.kotlin.fir.FirElement
+import org.jetbrains.kotlin.fir.analysis.cfa.LeakedSymbolFinder
+import org.jetbrains.kotlin.fir.analysis.cfa.SymbolLegalUsageChecker
+import org.jetbrains.kotlin.fir.analysis.cfa.SymbolUsageContext
 import org.jetbrains.kotlin.fir.contracts.FirContractDescription
 import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectContextActions
 import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectFamily
-import org.jetbrains.kotlin.fir.contracts.contextual.declaration.CoeffectNodeContextBuilder
 import org.jetbrains.kotlin.fir.contracts.contextual.declaration.CoeffectFamilyContextHandler
+import org.jetbrains.kotlin.fir.contracts.contextual.declaration.CoeffectNodeContextBuilder
 import org.jetbrains.kotlin.fir.contracts.contextual.declaration.ConeCoeffectEffectDeclaration
 import org.jetbrains.kotlin.fir.contracts.contextual.declaration.ConeLambdaCoeffectEffectDeclaration
 import org.jetbrains.kotlin.fir.contracts.effects
@@ -24,36 +27,43 @@ import org.jetbrains.kotlin.fir.resolve.dfa.cfg.*
 import org.jetbrains.kotlin.fir.resolve.isInvoke
 import org.jetbrains.kotlin.fir.symbols.AbstractFirBasedSymbol
 
-class CoeffectActionsCollector(
+class CoeffectRawContextBuilder(
+    rootFunction: FirFunction<*>,
     private val familyAnalyzers: Map<CoeffectFamily, CoeffectFamilyAnalyzer>,
     private val lambdaToOwnerFunction: Map<FirAnonymousFunction, Pair<FirFunction<*>, AbstractFirBasedSymbol<*>>>
-) : ControlFlowGraphVisitor<Unit, CoeffectActionsOnNodes>() {
+) : ControlFlowGraphVisitor<Unit, CoeffectRawContextOnNodes>() {
+
+    private val leakTrackedSymbols: MutableMap<AbstractFirBasedSymbol<*>, MutableList<SymbolLegalUsageChecker>> = mutableMapOf()
+    private val symbolLeaksFinder = LeakedSymbolFinder(rootFunction)
+    private val symbolUsageContext = SymbolUsageContext(leakTrackedSymbols)
 
     private fun shouldHandleFamily(family: CoeffectFamily): Boolean = family in familyAnalyzers
 
-    override fun visitNode(node: CFGNode<*>, data: CoeffectActionsOnNodes) {
+    override fun visitNode(node: CFGNode<*>, data: CoeffectRawContextOnNodes) {
+        val contextBuilder = CoeffectContextBuilderImpl(node, data)
         for (familyAnalyzer in familyAnalyzers.values) {
             val familyActionsCollector = familyAnalyzer.actionsCollector ?: continue
-            node.accept(familyActionsCollector, data)
+            node.accept(familyActionsCollector, contextBuilder)
         }
+        node.accept(symbolLeaksFinder, symbolUsageContext)
     }
 
-    override fun visitFunctionCallNode(node: FunctionCallNode, data: CoeffectActionsOnNodes) {
+    override fun visitFunctionCallNode(node: FunctionCallNode, data: CoeffectRawContextOnNodes) {
         processFunctionCallNode(node, data)
         super.visitFunctionCallNode(node, data)
     }
 
-    override fun visitFunctionEnterNode(node: FunctionEnterNode, data: CoeffectActionsOnNodes) {
+    override fun visitFunctionEnterNode(node: FunctionEnterNode, data: CoeffectRawContextOnNodes) {
         processFunctionBoundaryNode(node, data) { onOwnerEnter(it) }
         super.visitFunctionEnterNode(node, data)
     }
 
-    override fun visitFunctionExitNode(node: FunctionExitNode, data: CoeffectActionsOnNodes) {
+    override fun visitFunctionExitNode(node: FunctionExitNode, data: CoeffectRawContextOnNodes) {
         processFunctionBoundaryNode(node, data) { onOwnerExit(it) }
         super.visitFunctionExitNode(node, data)
     }
 
-    private fun processFunctionCallNode(node: FunctionCallNode, data: CoeffectActionsOnNodes) {
+    private fun processFunctionCallNode(node: FunctionCallNode, data: CoeffectRawContextOnNodes) {
         val functionSymbol = node.fir.toResolvedCallableSymbol() ?: return
 
         if (functionSymbol.callableId.isInvoke()) {
@@ -66,7 +76,7 @@ class CoeffectActionsCollector(
 
     private inline fun processFunctionBoundaryNode(
         node: CFGNode<FirFunction<*>>,
-        data: CoeffectActionsOnNodes,
+        data: CoeffectRawContextOnNodes,
         extractor: CoeffectFamilyContextHandler.(CoeffectNodeContextBuilder<FirFunction<*>>) -> Unit
     ) {
         val function = node.fir
@@ -78,7 +88,7 @@ class CoeffectActionsCollector(
 
     private inline fun <E : FirElement> collectCoeffectActions(
         node: CFGNode<E>,
-        data: CoeffectActionsOnNodes,
+        data: CoeffectRawContextOnNodes,
         extractor: CoeffectFamilyContextHandler.(CoeffectNodeContextBuilder<E>) -> Unit
     ) {
         val effects = node.fir.contractDescription?.effects?.filterIsInstance<ConeCoeffectEffectDeclaration>()
@@ -96,7 +106,7 @@ class CoeffectActionsCollector(
         node: CFGNode<E>,
         function: FirFunction<*>,
         lambdaSymbol: AbstractFirBasedSymbol<*>,
-        data: CoeffectActionsOnNodes,
+        data: CoeffectRawContextOnNodes,
         extractor: CoeffectFamilyContextHandler.(CoeffectNodeContextBuilder<E>) -> Unit
     ) {
         val effects = function.contractDescription?.effects?.filterIsInstance<ConeLambdaCoeffectEffectDeclaration>()
@@ -118,29 +128,41 @@ class CoeffectActionsCollector(
             else -> null
         }
 
-    private class CoeffectContextBuilderImpl<E : FirElement>(
+    private inner class CoeffectContextBuilderImpl<E : FirElement>(
         private val node: CFGNode<E>,
-        private val actionsOnNodes: CoeffectActionsOnNodes
+        private val rawContext: CoeffectRawContextOnNodes
     ) : CoeffectNodeContextBuilder<E> {
 
         override val firElement: E get() = node.fir
 
         override fun addActions(actions: CoeffectContextActions) {
-            actionsOnNodes[node] = actions
+            rawContext[node] = actions
         }
 
-        override fun trackSymbolForLeaking(symbol: AbstractFirBasedSymbol<*>) {
-            TODO("Not yet implemented")
+        override fun trackSymbolForLeaking(
+            family: CoeffectFamily,
+            symbol: AbstractFirBasedSymbol<*>,
+            onLeakActions: () -> CoeffectContextActions
+        ) {
+            val familyAnalyzer = familyAnalyzers[family] ?: return
+            val usageChecker = familyAnalyzer.trackSymbolForIllegalUsage(rawContext, onLeakActions) ?: return
+            leakTrackedSymbols.getOrPut(symbol, ::mutableListOf) += usageChecker
+        }
+
+        override fun markSymbolAsNotLeaked(functionCall: FirFunctionCall, symbol: AbstractFirBasedSymbol<*>, family: CoeffectFamily) {
+            if (symbol !in leakTrackedSymbols) return
+            rawContext.markSymbolPassAsControlled(functionCall, symbol, family)
         }
     }
 }
 
-class CoeffectActionsOnNodes(private val data: MutableMap<CFGNode<*>, MutableMap<CoeffectFamily, CoeffectContextActions>>) {
+class CoeffectRawContextOnNodes {
+
+    private val data: MutableMap<CFGNode<*>, MutableMap<CoeffectFamily, CoeffectContextActions>> = mutableMapOf()
+    private val controlledSymbolPasses: MutableSet<ControlledSymbolPass> = mutableSetOf()
 
     var hasVerifiers: Boolean = false
         private set
-
-    constructor() : this(mutableMapOf())
 
     operator fun get(node: CFGNode<*>): MutableMap<CoeffectFamily, CoeffectContextActions>? = data[node]
 
@@ -155,6 +177,19 @@ class CoeffectActionsOnNodes(private val data: MutableMap<CFGNode<*>, MutableMap
 
         hasVerifiers = hasVerifiers || actions.verifiers.isNotEmpty()
     }
+
+    fun markSymbolPassAsControlled(functionCall: FirFunctionCall, symbol: AbstractFirBasedSymbol<*>, family: CoeffectFamily) {
+        controlledSymbolPasses += ControlledSymbolPass(functionCall, symbol, family)
+    }
+
+    fun isSymbolPassControlled(functionCall: FirFunctionCall, symbol: AbstractFirBasedSymbol<*>, family: CoeffectFamily): Boolean =
+        ControlledSymbolPass(functionCall, symbol, family) in controlledSymbolPasses
+
+    private data class ControlledSymbolPass(
+        val functionCall: FirFunctionCall,
+        val symbol: AbstractFirBasedSymbol<*>,
+        val family: CoeffectFamily
+    )
 
     operator fun iterator() = data.iterator()
 }

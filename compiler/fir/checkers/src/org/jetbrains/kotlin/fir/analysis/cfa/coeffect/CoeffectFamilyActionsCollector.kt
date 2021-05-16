@@ -5,10 +5,11 @@
 
 package org.jetbrains.kotlin.fir.analysis.cfa.coeffect
 
+import org.jetbrains.kotlin.fir.contracts.contextual.declaration.CoeffectNodeContextBuilder
 import org.jetbrains.kotlin.fir.resolve.dfa.cfg.CFGNode
 import org.jetbrains.kotlin.fir.resolve.dfa.cfg.ControlFlowGraphVisitor
 
-abstract class CoeffectFamilyActionsCollector : ControlFlowGraphVisitor<Unit, CoeffectActionsOnNodes>() {
+abstract class CoeffectFamilyActionsCollector : ControlFlowGraphVisitor<Unit, CoeffectNodeContextBuilder<*>>() {
 
-    override fun visitNode(node: CFGNode<*>, data: CoeffectActionsOnNodes) {}
+    override fun visitNode(node: CFGNode<*>, data: CoeffectNodeContextBuilder<*>) {}
 }

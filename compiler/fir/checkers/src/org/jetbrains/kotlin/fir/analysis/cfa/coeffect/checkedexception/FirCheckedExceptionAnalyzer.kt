@@ -6,7 +6,6 @@
 package org.jetbrains.kotlin.fir.analysis.cfa.coeffect.checkedexception
 
 import org.jetbrains.kotlin.fir.FirSourceElement
-import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.CoeffectActionsOnNodes
 import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.CoeffectFamilyActionsCollector
 import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.CoeffectFamilyAnalyzer
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirDiagnostic
@@ -17,6 +16,8 @@ import org.jetbrains.kotlin.fir.contract.contextual.checkedexception.CheckedExce
 import org.jetbrains.kotlin.fir.contract.contextual.checkedexception.CheckedExceptionContextError
 import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectFamily
 import org.jetbrains.kotlin.fir.contracts.contextual.coeffectActions
+import org.jetbrains.kotlin.fir.contracts.contextual.declaration.CoeffectNodeContextBuilder
+import org.jetbrains.kotlin.fir.contracts.contextual.declaration.plusAssign
 import org.jetbrains.kotlin.fir.contracts.contextual.diagnostics.CoeffectContextVerificationError
 import org.jetbrains.kotlin.fir.resolve.dfa.cfg.TryMainBlockEnterNode
 import org.jetbrains.kotlin.fir.resolve.dfa.cfg.TryMainBlockExitNode
@@ -30,18 +31,18 @@ object FirCheckedExceptionAnalyzer : CoeffectFamilyAnalyzer() {
 
     private object CheckedExceptionActionsCollector : CoeffectFamilyActionsCollector() {
 
-        override fun visitTryMainBlockEnterNode(node: TryMainBlockEnterNode, data: CoeffectActionsOnNodes) {
+        override fun visitTryMainBlockEnterNode(node: TryMainBlockEnterNode, data: CoeffectNodeContextBuilder<*>) {
             for (catch in node.fir.catches) {
                 val exceptionType = catch.parameter.returnTypeRef.coneTypeSafe<ConeKotlinType>() ?: continue
-                data[node] = coeffectActions {
+                data += coeffectActions {
                     modifiers += CatchesExceptionCoeffectContextProvider(exceptionType, catch)
                 }
             }
         }
 
-        override fun visitTryMainBlockExitNode(node: TryMainBlockExitNode, data: CoeffectActionsOnNodes) {
+        override fun visitTryMainBlockExitNode(node: TryMainBlockExitNode, data: CoeffectNodeContextBuilder<*>) {
             for (catch in node.fir.catches) {
-                data[node] = coeffectActions {
+                data += coeffectActions {
                     modifiers += CheckedExceptionCoeffectContextCleaner(catch)
                 }
             }

@@ -52,12 +52,16 @@ fun requireOpenEffectContextHandler(resource: ConeValueParameterReference) = han
         actions {
             verifiers += ResourceManagementContextVerifier(resourceSymbol, shouldBeOpen = true)
         }
+        symbolNotLeaked(resourceSymbol)
     }
 
     onOwnerEnter {
         val resourceSymbol = firElement.getParameterSymbol(resource.parameterIndex)
         actions {
             modifiers += ResourceManagementContextProvider(resourceSymbol, isOpen = true)
+        }
+        onSymbolLeak(resourceSymbol) {
+            modifiers += ResourceManagementContextCleaner(resourceSymbol)
         }
     }
 
@@ -79,12 +83,16 @@ fun closesResourceEffectContextHandler(resource: ConeValueParameterReference) = 
             verifiers += ResourceManagementContextVerifier(resourceSymbol, shouldBeOpen = true)
             modifiers += ResourceManagementContextProvider(resourceSymbol, isOpen = false)
         }
+        symbolNotLeaked(resourceSymbol)
     }
 
     onOwnerEnter {
         val resourceSymbol = firElement.getParameterSymbol(resource.parameterIndex)
         actions {
             modifiers += ResourceManagementContextProvider(resourceSymbol, isOpen = true)
+        }
+        onSymbolLeak(resourceSymbol) {
+            modifiers += ResourceManagementContextCleaner(resourceSymbol)
         }
     }
 

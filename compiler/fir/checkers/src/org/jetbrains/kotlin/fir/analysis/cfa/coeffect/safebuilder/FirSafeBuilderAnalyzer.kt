@@ -8,7 +8,6 @@ package org.jetbrains.kotlin.fir.analysis.cfa.coeffect.safebuilder
 import org.jetbrains.kotlin.contracts.description.EventOccurrencesRange
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.FirSourceElement
-import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.CoeffectActionsOnNodes
 import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.CoeffectFamilyActionsCollector
 import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.CoeffectFamilyAnalyzer
 import org.jetbrains.kotlin.fir.analysis.diagnostics.DiagnosticReporter
@@ -17,7 +16,9 @@ import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors
 import org.jetbrains.kotlin.fir.contract.contextual.safeBuilder.*
 import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectFamily
 import org.jetbrains.kotlin.fir.contracts.contextual.coeffectActions
+import org.jetbrains.kotlin.fir.contracts.contextual.declaration.CoeffectNodeContextBuilder
 import org.jetbrains.kotlin.fir.contracts.contextual.declaration.ConeAbstractCoeffectEffectDeclaration
+import org.jetbrains.kotlin.fir.contracts.contextual.declaration.plusAssign
 import org.jetbrains.kotlin.fir.contracts.contextual.diagnostics.CoeffectContextVerificationError
 import org.jetbrains.kotlin.fir.contracts.description.ConeActionDeclaration
 import org.jetbrains.kotlin.fir.contracts.description.ConeFunctionInvocationAction
@@ -66,14 +67,14 @@ object FirSafeBuilderAnalyzer : CoeffectFamilyAnalyzer() {
 
     private object SafeBuilderActionsCollector : CoeffectFamilyActionsCollector() {
 
-        override fun visitFunctionCallNode(node: FunctionCallNode, data: CoeffectActionsOnNodes) {
+        override fun visitFunctionCallNode(node: FunctionCallNode, data: CoeffectNodeContextBuilder<*>) {
             val functionSymbol = node.fir.toResolvedCallableSymbol() ?: return
             val receiverSymbol = node.fir.dispatchReceiver.toSymbol() as? FirCallableSymbol<*> ?: return
             val safeBuilderClass = node.fir.dispatchReceiver.typeRef.toSafeBuilderClass(functionSymbol.fir.session) ?: return
 
             if (isSafeBuilderConstructionMember(functionSymbol)) {
                 val safeBuilderAction = SafeBuilderAction(receiverSymbol, functionSymbol, SafeBuilderActionType.INVOCATION)
-                data[node] = coeffectActions {
+                data += coeffectActions {
                     modifiers += SafeBuilderCoeffectContextProvider(safeBuilderAction, EventOccurrencesRange.EXACTLY_ONCE)
                 }
                 return
@@ -81,25 +82,25 @@ object FirSafeBuilderAnalyzer : CoeffectFamilyAnalyzer() {
 
             if (functionSymbol.fir.annotations.any { it.toResolvedCallableSymbol()?.callableId == buildAnnotation }) {
                 safeBuilderClass.forEachSafeBuilderMember { member, actionType ->
-                    data[node] = coeffectActions {
+                    data += coeffectActions {
                         modifiers += SafeBuilderCoeffectContextCleaner(SafeBuilderAction(receiverSymbol, member.symbol, actionType))
                     }
                 }
             }
         }
 
-        override fun visitVariableAssignmentNode(node: VariableAssignmentNode, data: CoeffectActionsOnNodes) {
+        override fun visitVariableAssignmentNode(node: VariableAssignmentNode, data: CoeffectNodeContextBuilder<*>) {
             val receiverSymbol = node.fir.dispatchReceiver.toSymbol() as? FirCallableSymbol<*> ?: return
             val propertySymbol = node.fir.resolvedCallableReference?.resolvedSymbol as? FirCallableSymbol<*> ?: return
             if (!isSafeBuilderMember(receiverSymbol, propertySymbol)) return
 
             val safeBuilderAction = SafeBuilderAction(receiverSymbol, propertySymbol, SafeBuilderActionType.INITIALIZATION)
-            data[node] = coeffectActions {
+            data += coeffectActions {
                 modifiers += SafeBuilderCoeffectContextProvider(safeBuilderAction, EventOccurrencesRange.EXACTLY_ONCE)
             }
         }
 
-        override fun visitVariableDeclarationNode(node: VariableDeclarationNode, data: CoeffectActionsOnNodes) {
+        override fun visitVariableDeclarationNode(node: VariableDeclarationNode, data: CoeffectNodeContextBuilder<*>) {
             if (node.fir.isVar) return
 
             val functionCall = node.fir.initializer as? FirFunctionCall ?: return
@@ -111,14 +112,14 @@ object FirSafeBuilderAnalyzer : CoeffectFamilyAnalyzer() {
 
             constructedClass.forEachSafeBuilderMember { member, actionType ->
                 val safeBuilderAction = SafeBuilderAction(node.fir.symbol, member.symbol, actionType)
-                data[node] = coeffectActions {
+                data += coeffectActions {
                     modifiers += SafeBuilderCoeffectContextProvider(safeBuilderAction, EventOccurrencesRange.ZERO)
                 }
             }
         }
 
-        override fun visitFunctionExitNode(node: FunctionExitNode, data: CoeffectActionsOnNodes) {
-            data[node] = coeffectActions {
+        override fun visitFunctionExitNode(node: FunctionExitNode, data: CoeffectNodeContextBuilder<*>) {
+            data += coeffectActions {
                 verifiers += SafeBuilderActionProvidingVerifier
             }
         }

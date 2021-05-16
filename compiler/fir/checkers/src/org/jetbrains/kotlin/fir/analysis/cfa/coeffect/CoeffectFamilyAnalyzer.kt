@@ -8,6 +8,7 @@ package org.jetbrains.kotlin.fir.analysis.cfa.coeffect
 import org.jetbrains.kotlin.fir.FirSourceElement
 import org.jetbrains.kotlin.fir.analysis.diagnostics.DiagnosticReporter
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirDiagnostic
+import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectContextActions
 import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectFamily
 import org.jetbrains.kotlin.fir.contracts.contextual.diagnostics.CoeffectContextVerificationError
 import org.jetbrains.kotlin.fir.declarations.FirFunction
@@ -22,6 +23,13 @@ abstract class CoeffectFamilyAnalyzer {
 
     open fun analyze(function: FirFunction<*>, graph: ControlFlowGraph, reporter: DiagnosticReporter) {
 
+    }
+
+    open fun trackSymbolForIllegalUsage(
+        rawContext: CoeffectRawContextOnNodes,
+        onLeakActions: () -> CoeffectContextActions
+    ): CoeffectSymbolUsageFamilyChecker? {
+        return CoeffectSymbolUsageFamilyChecker(family, rawContext, onLeakActions)
     }
 }
 

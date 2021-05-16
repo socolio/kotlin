@@ -23,11 +23,13 @@ import org.jetbrains.kotlin.fir.expressions.FirFunctionCall
 import org.jetbrains.kotlin.fir.expressions.FirQualifiedAccess
 import org.jetbrains.kotlin.fir.expressions.impl.FirResolvedArgumentList
 import org.jetbrains.kotlin.fir.expressions.toResolvedCallableSymbol
-import org.jetbrains.kotlin.fir.isInPlaceLambda
 import org.jetbrains.kotlin.fir.references.FirReference
 import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
 import org.jetbrains.kotlin.fir.references.FirThisReference
-import org.jetbrains.kotlin.fir.resolve.dfa.cfg.*
+import org.jetbrains.kotlin.fir.resolve.dfa.cfg.CFGNode
+import org.jetbrains.kotlin.fir.resolve.dfa.cfg.ControlFlowGraph
+import org.jetbrains.kotlin.fir.resolve.dfa.cfg.ControlFlowGraphVisitor
+import org.jetbrains.kotlin.fir.resolve.dfa.cfg.FunctionCallNode
 import org.jetbrains.kotlin.fir.resolve.inference.isBuiltinFunctionalType
 import org.jetbrains.kotlin.fir.resolve.isInvoke
 import org.jetbrains.kotlin.fir.symbols.AbstractFirBasedSymbol
@@ -63,12 +65,14 @@ object FirCallsEffectAnalyzer : FirControlFlowChecker() {
 
         if (functionalTypeEffects.isEmpty()) return
 
-        val leakedSymbols = mutableMapOf<AbstractFirBasedSymbol<*>, MutableList<FirSourceElement>>()
+        val capturedLambdaChecker = CapturedLambdaUsageChecker()
+        val targetSymbols = functionalTypeEffects.keys.associateWith { listOf(capturedLambdaChecker) }
         graph.traverse(
             TraverseDirection.Forward,
-            CapturedLambdaFinder(function),
-            IllegalScopeContext(functionalTypeEffects.keys, leakedSymbols)
+            LeakedSymbolFinder(function),
+            SymbolUsageContext(targetSymbols)
         )
+        val leakedSymbols = capturedLambdaChecker.leakedSymbols
 
         for ((symbol, leakedPlaces) in leakedSymbols) {
             function.contractDescription.source?.let {
@@ -99,88 +103,28 @@ object FirCallsEffectAnalyzer : FirControlFlowChecker() {
         }
     }
 
-    private class IllegalScopeContext(
-        private val functionalTypeSymbols: Set<AbstractFirBasedSymbol<*>>,
-        private val leakedSymbols: MutableMap<AbstractFirBasedSymbol<*>, MutableList<FirSourceElement>>,
-    ) {
-        private var scopeDepth: Int = 0
-        private var illegalScopeDepth: Int? = null
+    private class CapturedLambdaUsageChecker : SymbolLegalUsageChecker {
 
-        val inIllegalScope: Boolean get() = illegalScopeDepth != null
+        val leakedSymbols: MutableMap<AbstractFirBasedSymbol<*>, MutableList<FirSourceElement>> = mutableMapOf()
 
-        fun enterScope(legal: Boolean) {
-            scopeDepth++
-            if (illegalScopeDepth == null && !legal) illegalScopeDepth = scopeDepth
-        }
+        override fun isLegalReceiver(
+            functionCall: FunctionCallNode,
+            functionSymbol: FirFunctionSymbol<*>?,
+            symbol: AbstractFirBasedSymbol<*>,
+            isExtension: Boolean
+        ): Boolean =
+            !isExtension && functionSymbol?.callableId?.isInvoke() == true ||
+                    isExtension && functionSymbol?.fir?.contractDescription?.getParameterCallsEffect(-1) != null
 
-        fun exitScope() {
-            if (scopeDepth == illegalScopeDepth) illegalScopeDepth = null
-            scopeDepth--
-        }
+        override fun isLegalArgument(
+            functionCall: FunctionCallNode,
+            functionSymbol: FirFunctionSymbol<*>?,
+            arg: FirExpression,
+            symbol: AbstractFirBasedSymbol<*>
+        ): Boolean = functionCall.fir.getArgumentCallsEffect(arg) != null
 
-        inline fun checkExpressionForLeakedSymbols(
-            fir: FirExpression?,
-            source: FirSourceElement? = fir?.source,
-            illegalUsage: () -> Boolean = { false }
-        ) {
-            val symbol = referenceToSymbol(fir.toQualifiedReference())
-            if (symbol != null && symbol in functionalTypeSymbols && (inIllegalScope || illegalUsage())) {
-                leakedSymbols.getOrPut(symbol, ::mutableListOf).addIfNotNull(source)
-            }
-        }
-    }
-
-    private class CapturedLambdaFinder(val rootFunction: FirFunction<*>) : ControlFlowGraphVisitor<Unit, IllegalScopeContext>() {
-
-        override fun visitNode(node: CFGNode<*>, data: IllegalScopeContext) {}
-
-        override fun visitFunctionEnterNode(node: FunctionEnterNode, data: IllegalScopeContext) {
-            data.enterScope(node.fir === rootFunction || node.fir.isInPlaceLambda())
-        }
-
-        override fun visitFunctionExitNode(node: FunctionExitNode, data: IllegalScopeContext) {
-            data.exitScope()
-        }
-
-        override fun visitPropertyInitializerEnterNode(node: PropertyInitializerEnterNode, data: IllegalScopeContext) {
-            data.enterScope(false)
-            data.checkExpressionForLeakedSymbols(node.fir.initializer)
-        }
-
-        override fun visitPropertyInitializerExitNode(node: PropertyInitializerExitNode, data: IllegalScopeContext) {
-            data.exitScope()
-        }
-
-        override fun visitInitBlockEnterNode(node: InitBlockEnterNode, data: IllegalScopeContext) {
-            data.enterScope(false)
-        }
-
-        override fun visitInitBlockExitNode(node: InitBlockExitNode, data: IllegalScopeContext) {
-            data.exitScope()
-        }
-
-        override fun visitVariableAssignmentNode(node: VariableAssignmentNode, data: IllegalScopeContext) {
-            data.checkExpressionForLeakedSymbols(node.fir.rValue) { true }
-        }
-
-        override fun visitVariableDeclarationNode(node: VariableDeclarationNode, data: IllegalScopeContext) {
-            data.checkExpressionForLeakedSymbols(node.fir.initializer) { true }
-        }
-
-        override fun visitFunctionCallNode(node: FunctionCallNode, data: IllegalScopeContext) {
-            val functionSymbol = node.fir.toResolvedCallableSymbol() as? FirFunctionSymbol<*>?
-            val contractDescription = functionSymbol?.fir?.contractDescription
-
-            val callSource = node.fir.explicitReceiver?.source ?: node.fir.source
-            data.checkExpressionForLeakedSymbols(node.fir.explicitReceiver, callSource) {
-                functionSymbol?.callableId?.isInvoke() != true && contractDescription?.getParameterCallsEffect(-1) == null
-            }
-
-            for (arg in node.fir.argumentList.arguments) {
-                data.checkExpressionForLeakedSymbols(arg) {
-                    node.fir.getArgumentCallsEffect(arg) == null
-                }
-            }
+        override fun recordSymbolLeak(node: CFGNode<*>, symbol: AbstractFirBasedSymbol<*>, source: FirSourceElement?) {
+            leakedSymbols.getOrPut(symbol, ::mutableListOf).addIfNotNull(source)
         }
     }
 
