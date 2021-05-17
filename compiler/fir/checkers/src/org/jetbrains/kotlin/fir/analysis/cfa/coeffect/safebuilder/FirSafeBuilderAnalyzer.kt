@@ -8,8 +8,7 @@ package org.jetbrains.kotlin.fir.analysis.cfa.coeffect.safebuilder
 import org.jetbrains.kotlin.contracts.description.EventOccurrencesRange
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.FirSourceElement
-import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.CoeffectFamilyActionsCollector
-import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.CoeffectFamilyAnalyzer
+import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.*
 import org.jetbrains.kotlin.fir.analysis.diagnostics.DiagnosticReporter
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirDiagnostic
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors
@@ -34,6 +33,7 @@ import org.jetbrains.kotlin.fir.symbols.AbstractFirBasedSymbol
 import org.jetbrains.kotlin.fir.symbols.CallableId
 import org.jetbrains.kotlin.fir.symbols.impl.FirCallableSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirConstructorSymbol
+import org.jetbrains.kotlin.fir.symbols.impl.FirPropertySymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
 import org.jetbrains.kotlin.fir.types.FirTypeRef
 import org.jetbrains.kotlin.name.FqName
@@ -77,10 +77,12 @@ object FirSafeBuilderAnalyzer : CoeffectFamilyAnalyzer() {
                 data += coeffectActions {
                     modifiers += SafeBuilderCoeffectContextProvider(safeBuilderAction, EventOccurrencesRange.EXACTLY_ONCE)
                 }
+                data.markSymbolAsNotLeaked(node.fir, receiverSymbol, family)
                 return
             }
 
             if (functionSymbol.fir.annotations.any { it.toResolvedCallableSymbol()?.callableId == buildAnnotation }) {
+                data.markSymbolAsNotLeaked(node.fir, receiverSymbol, family)
                 safeBuilderClass.forEachSafeBuilderMember { member, actionType ->
                     data += coeffectActions {
                         modifiers += SafeBuilderCoeffectContextCleaner(SafeBuilderAction(receiverSymbol, member.symbol, actionType))
@@ -185,6 +187,7 @@ object FirSafeBuilderAnalyzer : CoeffectFamilyAnalyzer() {
             is SafeBuilderInvocationRequiredError -> FirErrors.FUNCTION_INVOCATION_REQUIRED.on(source, target, function, range)
             is SafeBuilderUnprovidedInitializationError -> FirErrors.UNPROVIDED_SAFE_BUILDER_INITIALIZATION.on(source, target, property)
             is SafeBuilderUnprovidedInvocationError -> FirErrors.UNPROVIDED_SAFE_BUILDER_INVOCATION.on(source, target, function)
+            is SafeBuilderTargetLeakError -> FirErrors.SAFE_BUILDER_TARGET_LEAK.on(source, target)
             else -> null
         }
     }

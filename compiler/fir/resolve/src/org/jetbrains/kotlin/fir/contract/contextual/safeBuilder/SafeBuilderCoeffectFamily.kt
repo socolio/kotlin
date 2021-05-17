@@ -76,17 +76,27 @@ fun mustDoEffectContextHandler(action: ConeActionDeclaration) = handleCoeffectCo
     family = SafeBuilderCoeffectFamily
 
     onOwnerCall {
-        val target = action.target as? ConeLambdaArgumentReference ?: return@onOwnerCall 
+        val target = action.target as? ConeLambdaArgumentReference ?: return@onOwnerCall
         val mapping = createArgumentsMapping(firElement) ?: return@onOwnerCall
-        val targetSymbol = mapping[target.parameter.parameterIndex + 1]?.toResolvedCallableSymbol() ?: return@onOwnerCall 
-        val safeBuilderAction = action.toSafeBuilderAction(targetSymbol) ?: return@onOwnerCall 
+        val targetSymbol = mapping[target.parameter.parameterIndex + 1]?.toResolvedCallableSymbol() ?: return@onOwnerCall
+        val safeBuilderAction = action.toSafeBuilderAction(targetSymbol) ?: return@onOwnerCall
         actions {
             modifiers += SafeBuilderCoeffectContextProvider(safeBuilderAction, action.kind)
         }
     }
 
+    onOwnerEnter {
+        val target = action.target as? ConeLambdaArgumentReference ?: return@onOwnerEnter
+        val targetSymbol = firElement.getParameterSymbol(target.parameter.parameterIndex) as? FirCallableSymbol<*> ?: return@onOwnerEnter
+        onSymbolLeak(targetSymbol) {
+            actions {
+                verifiers += SafeBuilderTargetLeakNotifier(targetSymbol)
+            }
+        }
+    }
+
     onOwnerExit {
-        val target = action.target as? ConeLambdaArgumentReference ?: return@onOwnerExit 
+        val target = action.target as? ConeLambdaArgumentReference ?: return@onOwnerExit
         val safeBuilderAction = action.toSafeBuilderAction(firElement, target.parameter.parameterIndex) ?: return@onOwnerExit
         actions {
             verifiers += SafeBuilderCoeffectContextVerifier(safeBuilderAction, action.kind)
@@ -98,16 +108,27 @@ fun mustDoEffectContextHandler(action: ConeActionDeclaration) = handleCoeffectCo
 fun providesEffectContextHandler(action: ConeActionDeclaration) = handleCoeffectContext {
     family = SafeBuilderCoeffectFamily
 
-    onOwnerCall {
-        val targetSymbol = firElement.getTargetSymbol(action.target)
-        val safeBuilderAction = action.toSafeBuilderAction(targetSymbol) ?: return@onOwnerCall 
-        actions {
-            modifiers += SafeBuilderCoeffectContextProvider(safeBuilderAction, action.kind)
+    onOwnerEnter {
+        val target = action.target as? ConeValueParameterReference ?: return@onOwnerEnter
+        val targetSymbol = firElement.getParameterSymbol(target.parameterIndex) as? FirCallableSymbol<*> ?: return@onOwnerEnter
+        onSymbolLeak(targetSymbol) {
+            actions {
+                verifiers += SafeBuilderTargetLeakNotifier(targetSymbol)
+            }
         }
     }
 
+    onOwnerCall {
+        val targetSymbol = firElement.getTargetSymbol(action.target)
+        val safeBuilderAction = action.toSafeBuilderAction(targetSymbol) ?: return@onOwnerCall
+        actions {
+            modifiers += SafeBuilderCoeffectContextProvider(safeBuilderAction, action.kind)
+        }
+        symbolNotLeaked(safeBuilderAction.owner)
+    }
+
     onOwnerExit {
-        val targetSymbol = action.target as? ConeValueParameterReference ?: return@onOwnerExit 
+        val targetSymbol = action.target as? ConeValueParameterReference ?: return@onOwnerExit
         val safeBuilderAction = action.toSafeBuilderAction(firElement, targetSymbol.parameterIndex) ?: return@onOwnerExit
         actions {
             verifiers += SafeBuilderCoeffectContextVerifier(safeBuilderAction, action.kind)
@@ -121,9 +142,10 @@ fun requiresEffectContextHandler(action: ConeActionDeclaration) = handleCoeffect
 
     onOwnerCall {
         val targetSymbol = firElement.getTargetSymbol(action.target)
-        val safeBuilderAction = action.toSafeBuilderAction(targetSymbol) ?: return@onOwnerCall 
+        val safeBuilderAction = action.toSafeBuilderAction(targetSymbol) ?: return@onOwnerCall
         actions {
             verifiers += SafeBuilderCoeffectContextVerifier(safeBuilderAction, action.kind)
         }
+        symbolNotLeaked(safeBuilderAction.owner)
     }
 }

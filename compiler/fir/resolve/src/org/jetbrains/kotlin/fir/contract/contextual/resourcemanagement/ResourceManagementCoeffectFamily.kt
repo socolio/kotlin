@@ -57,7 +57,9 @@ fun requireOpenEffectContextHandler(resource: ConeValueParameterReference) = han
             modifiers += ResourceManagementContextProvider(resourceSymbol, isOpen = true)
         }
         onSymbolLeak(resourceSymbol) {
-            modifiers += ResourceManagementContextCleaner(resourceSymbol)
+            actions {
+                modifiers += ResourceManagementContextCleaner(resourceSymbol)
+            }
         }
     }
 
@@ -88,7 +90,9 @@ fun closesResourceEffectContextHandler(resource: ConeValueParameterReference) = 
             modifiers += ResourceManagementContextProvider(resourceSymbol, isOpen = true)
         }
         onSymbolLeak(resourceSymbol) {
-            modifiers += ResourceManagementContextCleaner(resourceSymbol)
+            actions {
+                modifiers += ResourceManagementContextCleaner(resourceSymbol)
+            }
         }
     }
 

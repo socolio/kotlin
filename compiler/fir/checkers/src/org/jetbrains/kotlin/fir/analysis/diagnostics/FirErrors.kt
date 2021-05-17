@@ -145,6 +145,7 @@ object FirErrors {
     val FUNCTION_INVOCATION_REQUIRED by error3<FirSourceElement, PsiElement, FirCallableSymbol<*>, FirCallableSymbol<*>, EventOccurrencesRange>()
     val UNPROVIDED_SAFE_BUILDER_INITIALIZATION by error2<FirSourceElement, PsiElement, FirCallableSymbol<*>, FirCallableSymbol<*>>()
     val UNPROVIDED_SAFE_BUILDER_INVOCATION by error2<FirSourceElement, PsiElement, FirCallableSymbol<*>, FirCallableSymbol<*>>()
+    val SAFE_BUILDER_TARGET_LEAK by error1<FirSourceElement, PsiElement, FirCallableSymbol<*>>()
     val NOT_A_SAFE_BUILDER_MEMBER by error2<FirSourceElement, PsiElement, FirRegularClassSymbol, FirCallableSymbol<*>>()
     val RESOURCE_SHOULD_BE_OPEN by error1<FirSourceElement, PsiElement, AbstractFirBasedSymbol<*>>()
     val RESOURCE_SHOULD_BE_CLOSED by error1<FirSourceElement, PsiElement, AbstractFirBasedSymbol<*>>()

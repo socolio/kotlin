@@ -21,6 +21,7 @@ import org.jetbrains.kotlin.fir.declarations.FirAnonymousFunction
 import org.jetbrains.kotlin.fir.declarations.FirContractDescriptionOwner
 import org.jetbrains.kotlin.fir.declarations.FirFunction
 import org.jetbrains.kotlin.fir.expressions.FirFunctionCall
+import org.jetbrains.kotlin.fir.expressions.FirQualifiedAccess
 import org.jetbrains.kotlin.fir.expressions.toResolvedCallableSymbol
 import org.jetbrains.kotlin.fir.isLambda
 import org.jetbrains.kotlin.fir.resolve.dfa.cfg.*
@@ -128,6 +129,9 @@ class CoeffectRawContextBuilder(
             else -> null
         }
 
+    fun <E : FirElement> nodeContextBuilder(node: CFGNode<E>, data: CoeffectRawContextOnNodes): CoeffectNodeContextBuilder<E> =
+        CoeffectContextBuilderImpl(node, data)
+
     private inner class CoeffectContextBuilderImpl<E : FirElement>(
         private val node: CFGNode<E>,
         private val rawContext: CoeffectRawContextOnNodes
@@ -142,10 +146,13 @@ class CoeffectRawContextBuilder(
         override fun trackSymbolForLeaking(
             family: CoeffectFamily,
             symbol: AbstractFirBasedSymbol<*>,
-            onLeakActions: () -> CoeffectContextActions
+            onLeakHandler: CoeffectNodeContextBuilder<*>.() -> Unit
         ) {
             val familyAnalyzer = familyAnalyzers[family] ?: return
-            val usageChecker = familyAnalyzer.trackSymbolForIllegalUsage(rawContext, onLeakActions) ?: return
+            val usageChecker = familyAnalyzer.trackSymbolForIllegalUsage(
+                this@CoeffectRawContextBuilder, rawContext, onLeakHandler
+            ) ?: return
+
             leakTrackedSymbols.getOrPut(symbol, ::mutableListOf) += usageChecker
         }
 
@@ -178,15 +185,15 @@ class CoeffectRawContextOnNodes {
         hasVerifiers = hasVerifiers || actions.verifiers.isNotEmpty()
     }
 
-    fun markSymbolPassAsControlled(functionCall: FirFunctionCall, symbol: AbstractFirBasedSymbol<*>, family: CoeffectFamily) {
-        controlledSymbolPasses += ControlledSymbolPass(functionCall, symbol, family)
+    fun markSymbolPassAsControlled(firElement: FirQualifiedAccess, symbol: AbstractFirBasedSymbol<*>, family: CoeffectFamily) {
+        controlledSymbolPasses += ControlledSymbolPass(firElement, symbol, family)
     }
 
-    fun isSymbolPassControlled(functionCall: FirFunctionCall, symbol: AbstractFirBasedSymbol<*>, family: CoeffectFamily): Boolean =
-        ControlledSymbolPass(functionCall, symbol, family) in controlledSymbolPasses
+    fun isSymbolPassControlled(firElement: FirQualifiedAccess, symbol: AbstractFirBasedSymbol<*>, family: CoeffectFamily): Boolean =
+        ControlledSymbolPass(firElement, symbol, family) in controlledSymbolPasses
 
     private data class ControlledSymbolPass(
-        val functionCall: FirFunctionCall,
+        val firElement: FirQualifiedAccess,
         val symbol: AbstractFirBasedSymbol<*>,
         val family: CoeffectFamily
     )

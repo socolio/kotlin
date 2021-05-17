@@ -7,17 +7,17 @@ package org.jetbrains.kotlin.fir.analysis.cfa
 
 import org.jetbrains.kotlin.fir.FirSourceElement
 import org.jetbrains.kotlin.fir.declarations.FirFunction
-import org.jetbrains.kotlin.fir.expressions.FirExpression
-import org.jetbrains.kotlin.fir.expressions.FirQualifiedAccess
+import org.jetbrains.kotlin.fir.expressions.*
 import org.jetbrains.kotlin.fir.expressions.impl.FirNoReceiverExpression
-import org.jetbrains.kotlin.fir.expressions.toResolvedCallableSymbol
 import org.jetbrains.kotlin.fir.isInPlaceLambda
 import org.jetbrains.kotlin.fir.references.FirReference
 import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
 import org.jetbrains.kotlin.fir.references.FirThisReference
 import org.jetbrains.kotlin.fir.resolve.dfa.cfg.*
 import org.jetbrains.kotlin.fir.symbols.AbstractFirBasedSymbol
+import org.jetbrains.kotlin.fir.symbols.impl.FirCallableSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirFunctionSymbol
+import org.jetbrains.kotlin.fir.symbols.impl.FirPropertySymbol
 
 class LeakedSymbolFinder(val rootFunction: FirFunction<*>) : ControlFlowGraphVisitor<Unit, SymbolUsageContext>() {
 
@@ -48,34 +48,58 @@ class LeakedSymbolFinder(val rootFunction: FirFunction<*>) : ControlFlowGraphVis
         data.exitScope()
     }
 
-    override fun visitVariableAssignmentNode(node: VariableAssignmentNode, data: SymbolUsageContext) {
-        data.checkExpressionForLeakedSymbols(node, node.fir.rValue) { isLegalAssignment(node, it) }
-    }
-
     override fun visitVariableDeclarationNode(node: VariableDeclarationNode, data: SymbolUsageContext) {
         data.checkExpressionForLeakedSymbols(node, node.fir.initializer) { isLegalVariableInitialization(node, it) }
+    }
+
+    override fun visitVariableAssignmentNode(node: VariableAssignmentNode, data: SymbolUsageContext) {
+        data.checkExpressionForLeakedSymbols(node, node.fir.rValue) { isLegalAssignment(node, it) }
+
+        val accessSymbol = (node.fir.calleeReference as? FirResolvedNamedReference)?.resolvedSymbol as? FirPropertySymbol ?: return
+        checkQualifiedAccess(node, node.fir, data) { symbol, isExtension ->
+            isLegalPropertyAccess(node.fir, symbol, accessSymbol, isExtension)
+        }
     }
 
     override fun visitFunctionCallNode(node: FunctionCallNode, data: SymbolUsageContext) {
         val functionSymbol = node.fir.toResolvedCallableSymbol() as? FirFunctionSymbol<*>?
 
-        if (node.fir.dispatchReceiver !is FirNoReceiverExpression) {
-            val dispatchCallSource = node.fir.dispatchReceiver.source ?: node.fir.source
-            data.checkExpressionForLeakedSymbols(node, node.fir.dispatchReceiver, dispatchCallSource) { symbol ->
-                isLegalReceiver(node, functionSymbol, symbol, isExtension = false)
-            }
-        }
-
-        if (node.fir.extensionReceiver !is FirNoReceiverExpression) {
-            val extensionCallSource = node.fir.extensionReceiver.source ?: node.fir.source
-            data.checkExpressionForLeakedSymbols(node, node.fir.extensionReceiver, extensionCallSource) { symbol ->
-                isLegalReceiver(node, functionSymbol, symbol, isExtension = false)
-            }
+        checkQualifiedAccess(node, node.fir, data) { symbol, isExtension ->
+            isLegalFunctionReceiver(node, functionSymbol, symbol, isExtension)
         }
 
         for (arg in node.fir.argumentList.arguments) {
             data.checkExpressionForLeakedSymbols(node, arg) { symbol ->
                 isLegalArgument(node, functionSymbol, arg, symbol)
+            }
+        }
+    }
+
+    override fun visitQualifiedAccessNode(node: QualifiedAccessNode, data: SymbolUsageContext) {
+        val accessSymbol = node.fir.toResolvedCallableSymbol() as? FirPropertySymbol ?: return
+
+        checkQualifiedAccess(node, node.fir, data) { symbol, isExtension ->
+            isLegalPropertyAccess(node.fir, symbol, accessSymbol, isExtension)
+        }
+    }
+
+    private inline fun checkQualifiedAccess(
+        node: CFGNode<*>,
+        qualifiedAccess: FirQualifiedAccess,
+        data: SymbolUsageContext,
+        isLegalUsage: SymbolLegalUsageChecker.(AbstractFirBasedSymbol<*>, Boolean) -> Boolean
+    ) {
+        if (qualifiedAccess.dispatchReceiver !is FirNoReceiverExpression) {
+            val dispatchCallSource = qualifiedAccess.dispatchReceiver.source ?: qualifiedAccess.source
+            data.checkExpressionForLeakedSymbols(node, qualifiedAccess.dispatchReceiver, dispatchCallSource) { symbol ->
+                isLegalUsage(symbol, false)
+            }
+        }
+
+        if (qualifiedAccess.extensionReceiver !is FirNoReceiverExpression) {
+            val extensionCallSource = qualifiedAccess.extensionReceiver.source ?: qualifiedAccess.source
+            data.checkExpressionForLeakedSymbols(node, qualifiedAccess.extensionReceiver, extensionCallSource) { symbol ->
+                isLegalUsage(symbol, true)
             }
         }
     }
@@ -104,7 +128,7 @@ class SymbolUsageContext(val targetSymbols: Map<AbstractFirBasedSymbol<*>, List<
         isLegalUsage: SymbolLegalUsageChecker.(AbstractFirBasedSymbol<*>) -> Boolean
     ) {
         if (fir == null || targetSymbols.isEmpty()) return
-        val reference = (fir as? FirQualifiedAccess)?.calleeReference ?: return
+        val reference = (fir as? FirResolvable)?.calleeReference ?: return
         val symbol = referenceToSymbol(reference) ?: return
         val usageCheckers = targetSymbols[symbol] ?: return
 
@@ -134,7 +158,14 @@ interface SymbolLegalUsageChecker {
         symbol: AbstractFirBasedSymbol<*>
     ): Boolean = false
 
-    fun isLegalReceiver(
+    fun isLegalPropertyAccess(
+        access: FirQualifiedAccess,
+        symbol: AbstractFirBasedSymbol<*>,
+        propertySymbol: FirPropertySymbol,
+        isExtension: Boolean
+    ): Boolean = true
+
+    fun isLegalFunctionReceiver(
         functionCall: FunctionCallNode,
         functionSymbol: FirFunctionSymbol<*>?,
         symbol: AbstractFirBasedSymbol<*>,

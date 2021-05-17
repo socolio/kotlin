@@ -9,12 +9,9 @@ import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.FirSourceElement
 import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.CoeffectFamilyActionsCollector
 import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.CoeffectFamilyAnalyzer
-import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.CoeffectRawContextOnNodes
-import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.CoeffectSymbolUsageFamilyChecker
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirDiagnostic
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors
 import org.jetbrains.kotlin.fir.contract.contextual.resourcemanagement.*
-import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectContextActions
 import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectFamily
 import org.jetbrains.kotlin.fir.contracts.contextual.coeffectActions
 import org.jetbrains.kotlin.fir.contracts.contextual.declaration.CoeffectNodeContextBuilder

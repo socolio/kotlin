@@ -10,6 +10,7 @@ import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectContext
 import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectContextVerifier
 import org.jetbrains.kotlin.fir.contracts.contextual.diagnostics.CoeffectContextVerificationError
+import org.jetbrains.kotlin.fir.symbols.AbstractFirBasedSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirCallableSymbol
 
 class SafeBuilderInitializationRequiredError(
@@ -26,6 +27,10 @@ class SafeBuilderUnprovidedInitializationError(
 
 class SafeBuilderUnprovidedInvocationError(
     val target: FirCallableSymbol<*>, val function: FirCallableSymbol<*>
+) : CoeffectContextVerificationError(SafeBuilderCoeffectFamily)
+
+class SafeBuilderTargetLeakError(
+    val target: FirCallableSymbol<*>
 ) : CoeffectContextVerificationError(SafeBuilderCoeffectFamily)
 
 object SafeBuilderActionProvidingVerifier : CoeffectContextVerifier {
@@ -63,5 +68,13 @@ class SafeBuilderCoeffectContextVerifier(val action: SafeBuilderAction, val requ
             }
             listOf(error)
         } else emptyList()
+    }
+}
+
+class SafeBuilderTargetLeakNotifier(val target: FirCallableSymbol<*>) : CoeffectContextVerifier {
+    override val family get() = SafeBuilderCoeffectFamily
+
+    override fun verifyContext(context: CoeffectContext, session: FirSession): List<CoeffectContextVerificationError> {
+        return listOf(SafeBuilderTargetLeakError(target))
     }
 }

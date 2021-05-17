@@ -18,7 +18,13 @@ interface CoeffectNodeContextBuilder<E : FirElement> {
     val firElement: E
 
     fun addActions(actions: CoeffectContextActions)
-    fun trackSymbolForLeaking(family: CoeffectFamily, symbol: AbstractFirBasedSymbol<*>, onLeakActions: () -> CoeffectContextActions)
+
+    fun trackSymbolForLeaking(
+        family: CoeffectFamily,
+        symbol: AbstractFirBasedSymbol<*>,
+        onLeakHandler: CoeffectNodeContextBuilder<*>.() -> Unit
+    )
+
     fun markSymbolAsNotLeaked(functionCall: FirFunctionCall, symbol: AbstractFirBasedSymbol<*>, family: CoeffectFamily)
 }
 
@@ -47,9 +53,9 @@ class CoeffectFamilyContextBuilder {
         addActions(actionsBuilder.build())
     }
 
-    fun CoeffectNodeContextBuilder<*>.onSymbolLeak(symbol: AbstractFirBasedSymbol<*>, block: CoeffectContextActionsBuilder.() -> Unit) {
+    fun CoeffectNodeContextBuilder<*>.onSymbolLeak(symbol: AbstractFirBasedSymbol<*>, block: CoeffectNodeContextBuilder<*>.() -> Unit) {
         val family = family ?: throw AssertionError("Undefined coeffect family")
-        trackSymbolForLeaking(family, symbol) { coeffectActions(block) }
+        trackSymbolForLeaking(family, symbol, block)
     }
 
     fun CoeffectNodeContextBuilder<FirFunctionCall>.symbolNotLeaked(symbol: AbstractFirBasedSymbol<*>) {

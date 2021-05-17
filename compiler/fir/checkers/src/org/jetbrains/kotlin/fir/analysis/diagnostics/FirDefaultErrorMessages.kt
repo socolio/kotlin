@@ -44,6 +44,7 @@ import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.FUNCTION_INVOCATI
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.HIDDEN
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.ILLEGAL_CONST_EXPRESSION
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.ILLEGAL_UNDERSCORE
+import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.IMMUTABLE_LINK
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.INAPPLICABLE_CANDIDATE
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.INAPPLICABLE_INFIX_MODIFIER
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.INCOMPATIBLE_MODIFIERS
@@ -80,6 +81,7 @@ import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.REPEATED_MODIFIER
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.RESOURCE_SHOULD_BE_CLOSED
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.RESOURCE_SHOULD_BE_OPEN
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.RETURN_NOT_ALLOWED
+import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.SAFE_BUILDER_TARGET_LEAK
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.SEALED_CLASS_CONSTRUCTOR_CALL
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.SEALED_SUPERTYPE
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.SEALED_SUPERTYPE_IN_LOCAL_CLASS
@@ -307,6 +309,11 @@ class FirDefaultErrorMessages : DefaultErrorMessages.Extension {
             )
             map.put(NOT_A_SAFE_BUILDER_MEMBER, "'{3}::{4}' is not a member of safe builder", SYMBOL, SYMBOL)
             map.put(
+                SAFE_BUILDER_TARGET_LEAK,
+                "Safe builder {2} leaked",
+                SYMBOL,
+            )
+            map.put(
                 UNDEFINED_RESOURCE_STATE,
                 "Undefined {2} resource state",
                 SYMBOL,
@@ -319,6 +326,11 @@ class FirDefaultErrorMessages : DefaultErrorMessages.Extension {
             map.put(
                 RESOURCE_SHOULD_BE_CLOSED,
                 "Resource {2} shold be closed",
+                SYMBOL,
+            )
+            map.put(
+                IMMUTABLE_LINK,
+                "Link {2} is immutable",
                 SYMBOL,
             )
 

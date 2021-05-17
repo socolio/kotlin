@@ -26,15 +26,13 @@ import org.jetbrains.kotlin.fir.expressions.toResolvedCallableSymbol
 import org.jetbrains.kotlin.fir.references.FirReference
 import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
 import org.jetbrains.kotlin.fir.references.FirThisReference
-import org.jetbrains.kotlin.fir.resolve.dfa.cfg.CFGNode
-import org.jetbrains.kotlin.fir.resolve.dfa.cfg.ControlFlowGraph
-import org.jetbrains.kotlin.fir.resolve.dfa.cfg.ControlFlowGraphVisitor
-import org.jetbrains.kotlin.fir.resolve.dfa.cfg.FunctionCallNode
+import org.jetbrains.kotlin.fir.resolve.dfa.cfg.*
 import org.jetbrains.kotlin.fir.resolve.inference.isBuiltinFunctionalType
 import org.jetbrains.kotlin.fir.resolve.isInvoke
 import org.jetbrains.kotlin.fir.symbols.AbstractFirBasedSymbol
 import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirFunctionSymbol
+import org.jetbrains.kotlin.fir.symbols.impl.FirPropertySymbol
 import org.jetbrains.kotlin.fir.types.ConeKotlinType
 import org.jetbrains.kotlin.fir.types.FirTypeRef
 import org.jetbrains.kotlin.fir.types.coneTypeSafe
@@ -107,7 +105,7 @@ object FirCallsEffectAnalyzer : FirControlFlowChecker() {
 
         val leakedSymbols: MutableMap<AbstractFirBasedSymbol<*>, MutableList<FirSourceElement>> = mutableMapOf()
 
-        override fun isLegalReceiver(
+        override fun isLegalFunctionReceiver(
             functionCall: FunctionCallNode,
             functionSymbol: FirFunctionSymbol<*>?,
             symbol: AbstractFirBasedSymbol<*>,
@@ -122,6 +120,13 @@ object FirCallsEffectAnalyzer : FirControlFlowChecker() {
             arg: FirExpression,
             symbol: AbstractFirBasedSymbol<*>
         ): Boolean = functionCall.fir.getArgumentCallsEffect(arg) != null
+
+        override fun isLegalPropertyAccess(
+            access: FirQualifiedAccess,
+            symbol: AbstractFirBasedSymbol<*>,
+            propertySymbol: FirPropertySymbol,
+            isExtension: Boolean
+        ): Boolean = false
 
         override fun recordSymbolLeak(node: CFGNode<*>, symbol: AbstractFirBasedSymbol<*>, source: FirSourceElement?) {
             leakedSymbols.getOrPut(symbol, ::mutableListOf).addIfNotNull(source)
