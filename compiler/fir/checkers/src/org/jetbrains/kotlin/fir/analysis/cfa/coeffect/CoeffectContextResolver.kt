@@ -8,7 +8,9 @@ package org.jetbrains.kotlin.fir.analysis.cfa.coeffect
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
 import org.jetbrains.kotlin.fir.analysis.cfa.ControlFlowInfo
-import org.jetbrains.kotlin.fir.contracts.contextual.*
+import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectContext
+import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectContextActions
+import org.jetbrains.kotlin.fir.contracts.contextual.CoeffectFamily
 import org.jetbrains.kotlin.fir.resolve.dfa.cfg.CFGNode
 import org.jetbrains.kotlin.fir.resolve.dfa.cfg.ControlFlowGraphVisitor
 
@@ -65,12 +67,12 @@ class CoeffectContextOnNodes(
         prevData: CoeffectContextOnNodes?
     ): CoeffectContextOnNodes {
         if (actions.modifiers.isEmpty()) return this
-        val (context, _) = this[family]
+        val (context, contextFixed) = this[family]
 
         val prevContext = prevData?.get(family)
         if (prevContext != null && prevContext.second) {
             return when {
-                prevContext.first === context -> this
+                contextFixed && prevContext.first === context -> this
                 else -> put(family, prevContext)
             }
         }

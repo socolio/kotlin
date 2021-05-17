@@ -120,6 +120,10 @@ interface ConeResourceManagementEffectDeclaration {
     val resource: ConeValueParameterReference
 }
 
+interface ConeOwnershipEffectDeclaration {
+    val link: ConeValueParameterReference
+}
+
 /**
  * Effect which specifies that [resource] is required to be open
  */
@@ -142,4 +146,28 @@ class ConeClosesResourceEffectDeclaration(
 
     override fun <R, D> accept(contractDescriptionVisitor: ConeContractDescriptionVisitor<R, D>, data: D): R =
         contractDescriptionVisitor.visitClosesResourceEffectDeclaration(this, data)
+}
+
+/**
+* Effect which specifies that [link] is mutably borrowed by function
+*/
+class ConeBorrowsLinkEffectDeclaration(
+    override val link: ConeValueParameterReference,
+    contextHandler: CoeffectFamilyContextHandler
+) : ConeCoeffectEffectDeclaration(contextHandler), ConeOwnershipEffectDeclaration {
+
+    override fun <R, D> accept(contractDescriptionVisitor: ConeContractDescriptionVisitor<R, D>, data: D): R =
+        contractDescriptionVisitor.visitBorrowsLinkEffectDeclaration(this, data)
+}
+
+/**
+ * Effect which specifies that [link] is fully consumed by function
+ */
+class ConeConsumesLinkEffectDeclaration(
+    override val link: ConeValueParameterReference,
+    contextHandler: CoeffectFamilyContextHandler
+) : ConeCoeffectEffectDeclaration(contextHandler), ConeOwnershipEffectDeclaration {
+
+    override fun <R, D> accept(contractDescriptionVisitor: ConeContractDescriptionVisitor<R, D>, data: D): R =
+        contractDescriptionVisitor.visitConsumesLinkEffectDeclaration(this, data)
 }

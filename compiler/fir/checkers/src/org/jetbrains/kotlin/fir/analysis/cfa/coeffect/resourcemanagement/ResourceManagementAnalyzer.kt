@@ -73,38 +73,33 @@ object ResourceManagementAnalyzer : CoeffectFamilyAnalyzer() {
             if (!node.fir.dispatchReceiver.typeRef.isResourceClass(functionSymbol.fir.session)) return
 
             val newState = getNewStateAfterMemberInvocation(functionSymbol)
-
             if (newState != null) {
                 data += coeffectActions {
                     modifiers += ResourceManagementContextProvider(receiverSymbol, newState)
-                    verifiers += ResourceManagementContextVerifier(receiverSymbol, !newState)
                 }
-                data.markSymbolAsNotLeaked(node.fir, receiverSymbol, family)
-            } else {
-                val requiredState = getRequiredStateForMemberInvocation(functionSymbol) ?: return
+            }
+
+            val requiredState = getRequiredStateForMemberInvocation(functionSymbol)
+            if (requiredState != null) {
                 data += coeffectActions {
                     verifiers += ResourceManagementContextVerifier(receiverSymbol, requiredState)
                 }
-                data.markSymbolAsNotLeaked(node.fir, receiverSymbol, family)
             }
+
+            data.markSymbolAsNotLeaked(node.fir, receiverSymbol, family)
         }
     }
 
-    override fun trackSymbolForIllegalUsage(
-        rawContext: CoeffectRawContextOnNodes,
-        onLeakActions: () -> CoeffectContextActions
-    ): CoeffectSymbolUsageFamilyChecker = CoeffectSymbolUsageFamilyChecker(family, rawContext, onLeakActions)
-
-    fun isResourceClass(classDeclaration: FirRegularClass): Boolean {
+    private fun isResourceClass(classDeclaration: FirRegularClass): Boolean {
         return classDeclaration.annotations.any { it.toResolvedCallableSymbol()?.callableId == resourceAnnotation }
     }
 
-    fun FirTypeRef.isResourceClass(session: FirSession): Boolean {
+    private fun FirTypeRef.isResourceClass(session: FirSession): Boolean {
         val typeClass = firClassLike(session) as? FirRegularClass ?: return false
         return isResourceClass(typeClass)
     }
 
-    fun getNewStateAfterMemberInvocation(member: FirCallableSymbol<*>): Boolean? {
+    private fun getNewStateAfterMemberInvocation(member: FirCallableSymbol<*>): Boolean? {
         for (annotation in member.fir.annotations) {
             when (annotation.toResolvedCallableSymbol()?.callableId) {
                 opensResourceAnnotation -> return true
@@ -114,9 +109,11 @@ object ResourceManagementAnalyzer : CoeffectFamilyAnalyzer() {
         return null
     }
 
-    fun getRequiredStateForMemberInvocation(member: FirCallableSymbol<*>): Boolean? {
+    private fun getRequiredStateForMemberInvocation(member: FirCallableSymbol<*>): Boolean? {
         for (annotation in member.fir.annotations) {
             when (annotation.toResolvedCallableSymbol()?.callableId) {
+                opensResourceAnnotation -> return false
+                closesResourceAnnotation -> return true
                 requireOpenAnnotation -> return true
                 requireClosedAnnotation -> return false
             }

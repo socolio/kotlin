@@ -39,16 +39,12 @@ object ResourceManagementCoeffectContextCombiner : CoeffectContextCombiner {
     }
 }
 
-private fun FirFunction<*>.getParameterSymbol(index: Int): AbstractFirBasedSymbol<*> {
-    return if (index == -1) this.symbol else this.valueParameters[index].symbol
-}
-
 fun requireOpenEffectContextHandler(resource: ConeValueParameterReference) = handleCoeffectContext {
     family = ResourceManagementCoeffectFamily
 
     onOwnerCall {
         val mapping = createArgumentsMapping(firElement) ?: return@onOwnerCall
-        val resourceSymbol = mapping[resource.parameterIndex + 1]?.toResolvedCallableSymbol() ?: return@onOwnerCall
+        val resourceSymbol = mapping[resource.parameterIndex]?.toResolvedCallableSymbol() ?: return@onOwnerCall
         actions {
             verifiers += ResourceManagementContextVerifier(resourceSymbol, shouldBeOpen = true)
         }
@@ -78,7 +74,7 @@ fun closesResourceEffectContextHandler(resource: ConeValueParameterReference) = 
 
     onOwnerCall {
         val mapping = createArgumentsMapping(firElement) ?: return@onOwnerCall
-        val resourceSymbol = mapping[resource.parameterIndex + 1]?.toResolvedCallableSymbol() ?: return@onOwnerCall
+        val resourceSymbol = mapping[resource.parameterIndex]?.toResolvedCallableSymbol() ?: return@onOwnerCall
         actions {
             verifiers += ResourceManagementContextVerifier(resourceSymbol, shouldBeOpen = true)
             modifiers += ResourceManagementContextProvider(resourceSymbol, isOpen = false)

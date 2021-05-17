@@ -8,6 +8,7 @@ package org.jetbrains.kotlin.fir.analysis.checkers.declaration
 import org.jetbrains.kotlin.fir.analysis.cfa.*
 import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.FirCoeffectAnalyzer
 import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.checkedexception.FirCheckedExceptionAnalyzer
+import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.ownership.OwnershipAnalyzer
 import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.resourcemanagement.ResourceManagementAnalyzer
 import org.jetbrains.kotlin.fir.analysis.cfa.coeffect.safebuilder.FirSafeBuilderAnalyzer
 import org.jetbrains.kotlin.fir.analysis.checkers.cfa.FirControlFlowChecker
@@ -57,7 +58,8 @@ object CommonDeclarationCheckers : DeclarationCheckers() {
         FirCoeffectAnalyzer(
             FirCheckedExceptionAnalyzer,
             FirSafeBuilderAnalyzer,
-            ResourceManagementAnalyzer
+            ResourceManagementAnalyzer,
+            OwnershipAnalyzer
         ),
     )
 }

@@ -65,6 +65,18 @@ class ConeContractRenderer(private val builder: StringBuilder) : ConeContractDes
         builder.append(")")
     }
 
+    override fun visitBorrowsLinkEffectDeclaration(borrowsLinkEffect: ConeBorrowsLinkEffectDeclaration, data: Nothing?) {
+        builder.append("BorrowsLink(")
+        borrowsLinkEffect.link.accept(this, data)
+        builder.append(")")
+    }
+
+    override fun visitConsumesLinkEffectDeclaration(consumesLinkEffect: ConeConsumesLinkEffectDeclaration, data: Nothing?) {
+        builder.append("ConsumesLink(")
+        consumesLinkEffect.link.accept(this, data)
+        builder.append(")")
+    }
+
     override fun visitLogicalBinaryOperationContractExpression(binaryLogicExpression: ConeBinaryLogicExpression, data: Nothing?) {
         inBracketsIfNecessary(binaryLogicExpression, binaryLogicExpression.left) { binaryLogicExpression.left.accept(this, data) }
         builder.append(" ${binaryLogicExpression.kind.token} ")

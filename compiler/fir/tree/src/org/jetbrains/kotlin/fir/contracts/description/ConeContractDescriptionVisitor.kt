@@ -44,6 +44,12 @@ abstract class ConeContractDescriptionVisitor<out R, in D> {
     open fun visitClosesResourceEffectDeclaration(closesResourceEffect: ConeClosesResourceEffectDeclaration, data: D): R =
         visitEffectDeclaration(closesResourceEffect, data)
 
+    open fun visitBorrowsLinkEffectDeclaration(borrowsLinkEffect: ConeBorrowsLinkEffectDeclaration, data: D): R =
+        visitEffectDeclaration(borrowsLinkEffect, data)
+
+    open fun visitConsumesLinkEffectDeclaration(consumesLinkEffect: ConeConsumesLinkEffectDeclaration, data: D): R =
+        visitEffectDeclaration(consumesLinkEffect, data)
+
     // Expressions
     open fun visitBooleanExpression(booleanExpression: ConeBooleanExpression, data: D): R =
         visitContractDescriptionElement(booleanExpression, data)

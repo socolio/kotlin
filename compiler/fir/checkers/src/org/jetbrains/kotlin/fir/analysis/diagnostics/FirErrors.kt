@@ -149,6 +149,7 @@ object FirErrors {
     val RESOURCE_SHOULD_BE_OPEN by error1<FirSourceElement, PsiElement, AbstractFirBasedSymbol<*>>()
     val RESOURCE_SHOULD_BE_CLOSED by error1<FirSourceElement, PsiElement, AbstractFirBasedSymbol<*>>()
     val UNDEFINED_RESOURCE_STATE by error1<FirSourceElement, PsiElement, AbstractFirBasedSymbol<*>>()
+    val IMMUTABLE_LINK by error1<FirSourceElement, PsiElement, AbstractFirBasedSymbol<*>>()
 
     // Extended checkers group
     val REDUNDANT_VISIBILITY_MODIFIER by warning0<FirSourceElement, PsiElement>()

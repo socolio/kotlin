@@ -73,6 +73,10 @@ class CoeffectFamilyContextBuilder {
         val family = family ?: throw AssertionError("Undefined coeffect family for extractors")
         return CoeffectFamilyContextHandler(family, onOwnerCall ?: {}, onOwnerEnter ?: {}, onOwnerExit ?: {})
     }
+
+    fun FirFunction<*>.getParameterSymbol(index: Int): AbstractFirBasedSymbol<*> {
+        return if (index == -1) this.symbol else this.valueParameters[index].symbol
+    }
 }
 
 fun handleCoeffectContext(block: CoeffectFamilyContextBuilder.() -> Unit): CoeffectFamilyContextHandler {

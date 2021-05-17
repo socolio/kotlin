@@ -40,6 +40,8 @@ object FirContractsDslNames {
     val REQUIRES = id("", "requires")
     val REQUIRE_OPEN = id("", "requireOpen")
     val CLOSES = id("", "closes")
+    val BORROWS = id("", "borrows")
+    val CONSUMES = id("", "consumes")
 
     // enum class InvocationKind
     val INVOCATION_KIND_ENUM = id("InvocationKind")

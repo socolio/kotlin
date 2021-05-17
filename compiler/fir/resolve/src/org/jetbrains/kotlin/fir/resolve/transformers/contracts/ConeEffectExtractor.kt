@@ -10,6 +10,8 @@ import org.jetbrains.kotlin.fir.FirElement
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.contract.contextual.checkedexception.calledInTryCatchEffectContextHandler
 import org.jetbrains.kotlin.fir.contract.contextual.checkedexception.throwsEffectContextHandler
+import org.jetbrains.kotlin.fir.contract.contextual.ownership.borrowsLinkEffectContextHandler
+import org.jetbrains.kotlin.fir.contract.contextual.ownership.consumesLinkEffectContextHandler
 import org.jetbrains.kotlin.fir.contract.contextual.resourcemanagement.closesResourceEffectContextHandler
 import org.jetbrains.kotlin.fir.contract.contextual.resourcemanagement.requireOpenEffectContextHandler
 import org.jetbrains.kotlin.fir.contract.contextual.safeBuilder.mustDoEffectContextHandler
@@ -106,6 +108,16 @@ class ConeEffectExtractor(
             FirContractsDslNames.CLOSES -> {
                 val resource = functionCall.argument.accept(this, null) as? ConeValueParameterReference ?: return null
                 ConeClosesResourceEffectDeclaration(resource, closesResourceEffectContextHandler(resource))
+            }
+
+            FirContractsDslNames.BORROWS -> {
+                val link = functionCall.argument.accept(this, null) as? ConeValueParameterReference ?: return null
+                ConeBorrowsLinkEffectDeclaration(link, borrowsLinkEffectContextHandler(link))
+            }
+
+            FirContractsDslNames.CONSUMES -> {
+                val link = functionCall.argument.accept(this, null) as? ConeValueParameterReference ?: return null
+                ConeConsumesLinkEffectDeclaration(link, consumesLinkEffectContextHandler(link))
             }
 
             FirContractsDslNames.RECEIVER_OF -> {
